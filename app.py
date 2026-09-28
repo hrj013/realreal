@@ -114,8 +114,25 @@ if st.session_state.logged_in:
 
     st.subheader("🎮 게임")
 
-    st.info(
-        "게임 기능은 다음 단계에서 추가할 예정입니다!"
+    st.subheader("🎮 GAME")
+
+if st.button(
+    "🎮 GAME START",
+    use_container_width=True
+):
+
+    st.session_state.playing = True
+
+
+if st.session_state.get("playing", False):
+
+    game_html = load_game_html()
+
+    components.html(
+        game_html,
+        height=720,
+        scrolling=False
+    )
     )
 
     if st.button("로그아웃"):
