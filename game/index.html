@@ -1,0 +1,73 @@
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Eco Jump</title>
+
+    <link rel="stylesheet" href="game.css">
+</head>
+
+<body>
+
+<div id="game-container">
+
+    <!-- 상단 정보 -->
+    <div id="hud">
+
+        <div>
+            🌱 ECO JUMP
+        </div>
+
+        <div>
+            HEIGHT:
+            <span id="height">0</span> m
+        </div>
+
+        <div>
+            SCORE:
+            <span id="score">0</span>
+        </div>
+
+    </div>
+
+
+    <!-- 게임 화면 -->
+    <canvas id="gameCanvas"></canvas>
+
+
+    <!-- 게임 오버 화면 -->
+    <div id="gameOver">
+
+        <h1>GAME OVER</h1>
+
+        <p>
+            최고 높이:
+            <strong>
+                <span id="finalHeight">0</span>m
+            </strong>
+        </p>
+
+        <p>
+            점수:
+            <strong>
+                <span id="finalScore">0</span>
+            </strong>
+        </p>
+
+        <button onclick="restartGame()">
+            다시 하기
+        </button>
+
+    </div>
+
+</div>
+
+
+<script src="game.js"></script>
+
+</body>
+</html>
+```
