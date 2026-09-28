@@ -20,6 +20,43 @@ from database.db import (
 # 데이터베이스 초기화
 # -------------------------
 
+# -------------------------
+# 게임 HTML 불러오기
+# -------------------------
+
+def load_game_html():
+
+    game_folder = Path(__file__).parent / "game"
+
+    html = (
+        game_folder / "index.html"
+    ).read_text(encoding="utf-8")
+
+    css = (
+        game_folder / "game.css"
+    ).read_text(encoding="utf-8")
+
+    js = (
+        game_folder / "game.js"
+    ).read_text(encoding="utf-8")
+
+
+    # CSS 파일을 HTML 안에 넣기
+    html = html.replace(
+        '<link rel="stylesheet" href="game.css">',
+        f"<style>{css}</style>"
+    )
+
+
+    # JS 파일을 HTML 안에 넣기
+    html = html.replace(
+        '<script src="game.js"></script>',
+        f"<script>{js}</script>"
+    )
+
+
+    return html
+
 create_tables()
 
 
