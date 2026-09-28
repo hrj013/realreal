@@ -1,0 +1,163 @@
+```css
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+
+    background: #dff3e3;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: center;
+
+    min-height: 100vh;
+}
+
+
+#game-container {
+
+    position: relative;
+
+    width: 800px;
+
+    max-width: 95vw;
+
+    height: 700px;
+
+    max-height: 90vh;
+
+    overflow: hidden;
+
+    background: #bde0fe;
+
+    border-radius: 20px;
+
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+
+#gameCanvas {
+
+    display: block;
+
+    width: 100%;
+
+    height: 100%;
+}
+
+
+/* 상단 정보 */
+
+#hud {
+
+    position: absolute;
+
+    top: 0;
+
+    left: 0;
+
+    right: 0;
+
+    z-index: 10;
+
+    height: 60px;
+
+    padding: 0 20px;
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    background: rgba(255, 255, 255, 0.75);
+
+    font-weight: bold;
+
+    color: #234;
+
+    backdrop-filter: blur(5px);
+}
+
+
+/* 게임 오버 */
+
+#gameOver {
+
+    position: absolute;
+
+    top: 50%;
+
+    left: 50%;
+
+    transform:
+        translate(-50%, -50%);
+
+    width: 320px;
+
+    padding: 30px;
+
+    text-align: center;
+
+    background: white;
+
+    border-radius: 20px;
+
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.2);
+
+    display: none;
+
+    z-index: 20;
+}
+
+
+#gameOver h1 {
+
+    margin-top: 0;
+
+    color: #234;
+}
+
+
+#gameOver p {
+
+    font-size: 18px;
+}
+
+
+#gameOver button {
+
+    margin-top: 15px;
+
+    padding: 12px 25px;
+
+    border: none;
+
+    border-radius: 10px;
+
+    background: #4caf50;
+
+    color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+}
+
+
+#gameOver button:hover {
+
+    background: #388e3c;
+}
+```
