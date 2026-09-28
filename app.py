@@ -1,4 +1,13 @@
 import streamlit as st
+import streamlit.components.v1 as components
+
+from pathlib import Path
+
+from database.db import (
+    create_tables,
+    register_user,
+    login_user
+)
 
 from database.db import (
     create_tables,
