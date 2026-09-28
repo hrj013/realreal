@@ -1,4 +1,5 @@
 import sqlite3
+import hashlib
 from pathlib import Path
 
 
@@ -18,7 +19,7 @@ def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 1. 사용자
+    # 사용자 테이블
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +32,7 @@ def create_tables():
         )
     """)
 
-    # 2. 게임 기록
+    # 게임 기록 테이블
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS game_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,18 +47,16 @@ def create_tables():
         )
     """)
 
-    # 3. 탄소 배출 기록
+    # 탄소 기록 테이블
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS carbon_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             record_date DATE NOT NULL,
-
             car_km REAL DEFAULT 0,
             public_transport_km REAL DEFAULT 0,
             electricity_kwh REAL DEFAULT 0,
             meat_meals INTEGER DEFAULT 0,
-
             total_carbon REAL DEFAULT 0,
             previous_carbon REAL DEFAULT 0,
             reduction REAL DEFAULT 0,
@@ -68,7 +67,7 @@ def create_tables():
         )
     """)
 
-    # 4. 스킨
+    # 스킨 테이블
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS skins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +78,7 @@ def create_tables():
         )
     """)
 
-    # 5. 사용자가 가지고 있는 스킨
+    # 사용자가 가진 스킨
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_skins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,3 +98,55 @@ def create_tables():
 
     conn.commit()
     conn.close()
+
+
+def hash_password(password):
+    """비밀번호를 안전하게 해시"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def register_user(username, password):
+    """회원가입"""
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    password_hash = hash_password(password)
+
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, password_hash)
+            VALUES (?, ?)
+        """, (username, password_hash))
+
+        conn.commit()
+        return True
+
+    except sqlite3.IntegrityError:
+        # 이미 존재하는 아이디
+        return False
+
+    finally:
+        conn.close()
+
+
+def login_user(username, password):
+    """로그인"""
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    password_hash = hash_password(password)
+
+    cursor.execute("""
+        SELECT id, username, coin, green_point, current_skin
+        FROM users
+        WHERE username = ?
+        AND password_hash = ?
+    """, (username, password_hash))
+
+    user = cursor.fetchone()
+
+    conn.close()
+
+    return user
