@@ -19,20 +19,102 @@ def load_game_html():
 
     game_folder = Path(__file__).parent / "game"
 
-    # HTML 읽기
-    html = (
-        game_folder / "index.html"
-    ).read_text(encoding="utf-8")
-
-    # CSS 읽기
+    # CSS 파일 읽기
     css = (
         game_folder / "game.css"
     ).read_text(encoding="utf-8")
 
-    # JavaScript 읽기
+    # JavaScript 파일 읽기
     js = (
         game_folder / "game.js"
     ).read_text(encoding="utf-8")
+
+
+    # HTML을 직접 만들어서 CSS와 JS를 넣는다
+    html = f"""
+<!DOCTYPE html>
+
+<html lang="ko">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Eco Jump</title>
+
+    <style>
+        {css}
+    </style>
+
+</head>
+
+
+<body>
+
+<div id="game-container">
+
+    <div id="hud">
+
+        <div>
+            🌱 ECO JUMP
+        </div>
+
+        <div>
+            HEIGHT:
+            <span id="height">0</span> m
+        </div>
+
+        <div>
+            SCORE:
+            <span id="score">0</span>
+        </div>
+
+    </div>
+
+
+    <canvas id="gameCanvas"></canvas>
+
+
+    <div id="gameOver">
+
+        <h1>GAME OVER</h1>
+
+        <p>
+            최고 높이:
+            <strong>
+                <span id="finalHeight">0</span>m
+            </strong>
+        </p>
+
+        <p>
+            점수:
+            <strong>
+                <span id="finalScore">0</span>
+            </strong>
+        </p>
+
+        <button onclick="restartGame()">
+            다시 하기
+        </button>
+
+    </div>
+
+</div>
+
+
+<script>
+{js}
+</script>
+
+</body>
+
+</html>
+"""
+
+    return html
 
 
     # -------------------------
