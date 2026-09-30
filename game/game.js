@@ -1,39 +1,361 @@
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = 800;
+canvas.height = 700;
+
+
+// ================================
+// 게임 설정
+// ================================
+
+const gravity = 0.5;
+const maxJumpPower = 15;
+const distancePower = 20;
+
+// 착지는 살짝 여유 있게
+const landingTolerance = 12;
+
+
+// ================================
+// 플레이어
+// ================================
+
+const player = {
+    x: 100,
+    y: 580,
+
+    width: 30,
+    height: 40,
+
+    velocityX: 0,
+    velocityY: 0,
+
+    grounded: false
+};
+
+
+// ================================
+// 카메라
+// ================================
+
+let cameraY = 0;
+
+
+// ================================
+// 점수
+// ================================
+
+let maxHeight = 0;
+let score = 0;
+
+
+// ================================
+// 게임 상태
+// ================================
+
+let gameOver = false;
+
+let dragging = false;
+
+let mouseStartX = 0;
+let mouseStartY = 0;
+
+let mouseX = 0;
+let mouseY = 0;
+
+
+// ================================
+// 플랫폼
+// ================================
+
+const platforms = [];
+
+let highestPlatformY = 190;
+
+
+// 처음 발판
+function createStartingPlatforms() {
+
+    platforms.length = 0;
+
+    platforms.push({
+        x: 50,
+        y: 620,
+        width: 180,
+        height: 20
+    });
+
+    platforms.push({
+        x: 300,
+        y: 520,
+        width: 160,
+        height: 20
+    });
+
+    platforms.push({
+        x: 100,
+        y: 410,
+        width: 180,
+        height: 20
+    });
+
+    platforms.push({
+        x: 420,
+        y: 300,
+        width: 170,
+        height: 20
+    });
+
+    platforms.push({
+        x: 200,
+        y: 190,
+        width: 180,
+        height: 20
+    });
+
+    highestPlatformY = 190;
+}
+
+
+// ================================
+// 무한 발판 생성
+// ================================
+
+function createNewPlatforms() {
+
+    while (
+        highestPlatformY >
+        cameraY - 1000
+    ) {
+
+        const gapY =
+            90 + Math.random() * 50;
+
+        highestPlatformY -= gapY;
+
+        const width =
+            120 + Math.random() * 90;
+
+        const x =
+            Math.random() *
+            (canvas.width - width);
+
+        platforms.push({
+            x: x,
+            y: highestPlatformY,
+            width: width,
+            height: 20
+        });
+    }
+}
+
+
+// ================================
+// 오래된 발판 삭제
+// ================================
+
+function removeOldPlatforms() {
+
+    for (
+        let i = platforms.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        if (
+            platforms[i].y >
+            cameraY + 900
+        ) {
+
+            platforms.splice(i, 1);
+        }
+    }
+}
+
+
+// ================================
+// 점프
+// ================================
+
+function jump(targetX, targetY) {
+
+    if (
+        !player.grounded ||
+        gameOver
+    ) {
+        return;
+    }
+
+    const dx =
+        targetX - mouseStartX;
+
+    const dy =
+        targetY - mouseStartY;
+
+    const distance =
+        Math.sqrt(
+            dx * dx +
+            dy * dy
+        );
+
+    if (distance < 10) {
+        return;
+    }
+
+    let power =
+        distance / distancePower;
+
+    power =
+        Math.min(
+            power,
+            maxJumpPower
+        );
+
+    player.velocityX =
+        dx / distance * power;
+
+    player.velocityY =
+        dy / distance * power;
+
+    player.grounded = false;
+}
+
+
+// ================================
+// 마우스 조작
+// ================================
+
+canvas.addEventListener(
+    "mousedown",
+    function(event) {
+
+        if (gameOver) {
+            return;
+        }
+
+        dragging = true;
+
+        const rect =
+            canvas.getBoundingClientRect();
+
+        mouseStartX =
+            event.clientX - rect.left;
+
+        mouseStartY =
+            event.clientY - rect.top;
+
+        mouseX =
+            mouseStartX;
+
+        mouseY =
+            mouseStartY;
+    }
+);
+
+
+canvas.addEventListener(
+    "mousemove",
+    function(event) {
+
+        if (!dragging) {
+            return;
+        }
+
+        const rect =
+            canvas.getBoundingClientRect();
+
+        mouseX =
+            event.clientX - rect.left;
+
+        mouseY =
+            event.clientY - rect.top;
+    }
+);
+
+
+canvas.addEventListener(
+    "mouseup",
+    function() {
+
+        if (!dragging) {
+            return;
+        }
+
+        dragging = false;
+
+        jump(
+            mouseX,
+            mouseY
+        );
+    }
+);
+
+
+canvas.addEventListener(
+    "mouseleave",
+    function() {
+
+        if (!dragging) {
+            return;
+        }
+
+        dragging = false;
+
+        jump(
+            mouseX,
+            mouseY
+        );
+    }
+);
+
+
+// ================================
+// 충돌 처리
+// ================================
+
 function checkPlatformCollision() {
 
     player.grounded = false;
 
 
-    for (const platform of platforms) {
+    for (
+        const platform of platforms
+    ) {
 
         const playerLeft =
             player.x;
 
         const playerRight =
-            player.x + player.width;
+            player.x +
+            player.width;
 
         const playerTop =
             player.y;
 
         const playerBottom =
-            player.y + player.height;
+            player.y +
+            player.height;
 
 
         const platformLeft =
             platform.x;
 
         const platformRight =
-            platform.x + platform.width;
+            platform.x +
+            platform.width;
 
         const platformTop =
             platform.y;
 
         const platformBottom =
-            platform.y + platform.height;
+            platform.y +
+            platform.height;
 
 
-        // ====================================
-        // 1. 아래에서 발판에 부딪힘
-        // ====================================
+        // =================================
+        // 아래에서 발판을 때리는 경우
+        // =================================
 
         if (
 
@@ -56,22 +378,23 @@ function checkPlatformCollision() {
             player.y =
                 platformBottom;
 
-            player.velocityY =
-                0;
+            player.velocityY = 0;
         }
 
 
-        // ====================================
-        // 2. 위에서 발판에 착지
-        // ====================================
+        // =================================
+        // 위에서 착지
+        // =================================
 
-        const horizontalCollision =
+        const horizontalLanding =
 
             playerRight >
-                platformLeft - landingTolerance &&
+                platformLeft -
+                landingTolerance &&
 
             playerLeft <
-                platformRight + landingTolerance;
+                platformRight +
+                landingTolerance;
 
 
         const verticalLanding =
@@ -86,7 +409,7 @@ function checkPlatformCollision() {
 
 
         if (
-            horizontalCollision &&
+            horizontalLanding &&
             verticalLanding
         ) {
 
@@ -94,22 +417,23 @@ function checkPlatformCollision() {
                 platformTop -
                 player.height;
 
-            player.velocityY =
-                0;
+            player.velocityY = 0;
 
-            player.grounded =
-                true;
+            player.grounded = true;
         }
 
 
-        // ====================================
-        // 3. 왼쪽 벽 충돌
-        // 정확히 발판의 실제 x 범위만 사용
-        // ====================================
+        // =================================
+        // 왼쪽 벽
+        //
+        // 중요:
+        // 착지 tolerance를 사용하지 않음.
+        // 실제 초록색 발판 영역만 사용.
+        // =================================
 
-        const touchingLeftWall =
+        const hitLeftWall =
 
-            playerRight >=
+            playerRight >
                 platformLeft &&
 
             playerLeft <
@@ -122,25 +446,25 @@ function checkPlatformCollision() {
                 platformBottom;
 
 
-        if (touchingLeftWall) {
+        if (hitLeftWall) {
 
             player.x =
                 platformLeft -
                 player.width;
 
-            player.velocityX =
-                0;
+            player.velocityX = 0;
         }
 
 
-        // ====================================
-        // 4. 오른쪽 벽 충돌
-        // 정확히 발판의 실제 x 범위만 사용
-        // ====================================
+        // =================================
+        // 오른쪽 벽
+        //
+        // 실제 초록색 발판 영역만 사용.
+        // =================================
 
-        const touchingRightWall =
+        const hitRightWall =
 
-            playerLeft <=
+            playerLeft <
                 platformRight &&
 
             playerRight >
@@ -153,13 +477,521 @@ function checkPlatformCollision() {
                 platformBottom;
 
 
-        if (touchingRightWall) {
+        if (hitRightWall) {
 
             player.x =
                 platformRight;
 
-            player.velocityX =
-                0;
+            player.velocityX = 0;
         }
     }
 }
+
+
+// ================================
+// 플레이어 업데이트
+// ================================
+
+function updatePlayer() {
+
+    if (gameOver) {
+        return;
+    }
+
+
+    // 중력
+    player.velocityY += gravity;
+
+
+    // 이동
+    player.x +=
+        player.velocityX;
+
+    player.y +=
+        player.velocityY;
+
+
+    // 공기 저항
+    player.velocityX *= 0.98;
+
+
+    // 화면 왼쪽
+    if (player.x < 0) {
+
+        player.x = 0;
+
+        player.velocityX = 0;
+    }
+
+
+    // 화면 오른쪽
+    if (
+        player.x +
+        player.width >
+        canvas.width
+    ) {
+
+        player.x =
+            canvas.width -
+            player.width;
+
+        player.velocityX = 0;
+    }
+
+
+    // 플랫폼 충돌
+    checkPlatformCollision();
+
+
+    // ================================
+    // 높이 / 점수
+    // ================================
+
+    const currentHeight =
+        Math.max(
+            0,
+            Math.floor(
+                580 - player.y
+            )
+        );
+
+
+    if (
+        currentHeight >
+        maxHeight
+    ) {
+
+        maxHeight =
+            currentHeight;
+
+        score =
+            maxHeight;
+
+        document.getElementById(
+            "height"
+        ).textContent =
+            maxHeight;
+
+        document.getElementById(
+            "score"
+        ).textContent =
+            score;
+    }
+
+
+    // ================================
+    // 카메라
+    // ================================
+
+    const targetCameraY =
+        player.y - 300;
+
+
+    if (
+        targetCameraY <
+        cameraY
+    ) {
+
+        cameraY =
+            targetCameraY;
+    }
+
+
+    // 새로운 발판 생성
+    createNewPlatforms();
+
+    // 아래쪽 발판 정리
+    removeOldPlatforms();
+
+
+    // ================================
+    // 아래로 떨어짐
+    // ================================
+
+    if (
+        player.y >
+        cameraY + 900
+    ) {
+
+        endGame();
+    }
+}
+
+
+// ================================
+// 배경
+// ================================
+
+function drawBackground() {
+
+    ctx.fillStyle =
+        "#bde0fe";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+}
+
+
+// ================================
+// 구름
+// ================================
+
+function drawClouds() {
+
+    const clouds = [
+
+        {
+            x: 100,
+            y: 100
+        },
+
+        {
+            x: 600,
+            y: 250
+        },
+
+        {
+            x: 350,
+            y: 450
+        },
+
+        {
+            x: 50,
+            y: 700
+        }
+    ];
+
+
+    for (
+        const cloud
+        of clouds
+    ) {
+
+        const y =
+            cloud.y -
+            cameraY * 0.3;
+
+
+        if (
+            y < -100 ||
+            y > canvas.height + 100
+        ) {
+            continue;
+        }
+
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.7)";
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            cloud.x,
+            y,
+            25,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.arc(
+            cloud.x + 30,
+            y - 10,
+            30,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.arc(
+            cloud.x + 60,
+            y,
+            25,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+}
+
+
+// ================================
+// 플랫폼
+// ================================
+
+function drawPlatforms() {
+
+    for (
+        const platform
+        of platforms
+    ) {
+
+        const screenY =
+            platform.y -
+            cameraY;
+
+
+        if (
+            screenY < -50 ||
+            screenY >
+                canvas.height + 50
+        ) {
+            continue;
+        }
+
+
+        // 실제 충돌 영역과
+        // 정확히 같은 크기로 그림
+        ctx.fillStyle =
+            "#4caf50";
+
+        ctx.fillRect(
+            platform.x,
+            screenY,
+            platform.width,
+            platform.height
+        );
+
+
+        // 윗부분 밝은 색
+        ctx.fillStyle =
+            "#81c784";
+
+        ctx.fillRect(
+            platform.x,
+            screenY,
+            platform.width,
+            5
+        );
+    }
+}
+
+
+// ================================
+// 플레이어
+// ================================
+
+function drawPlayer() {
+
+    const screenY =
+        player.y -
+        cameraY;
+
+
+    ctx.fillStyle =
+        "#2e7d32";
+
+    ctx.fillRect(
+        player.x,
+        screenY,
+        player.width,
+        player.height
+    );
+
+
+    // 눈
+    ctx.fillStyle =
+        "white";
+
+    ctx.fillRect(
+        player.x + 7,
+        screenY + 9,
+        5,
+        5
+    );
+
+    ctx.fillRect(
+        player.x + 18,
+        screenY + 9,
+        5,
+        5
+    );
+
+
+    // 발
+    ctx.fillStyle =
+        "#1b5e20";
+
+    ctx.fillRect(
+        player.x + 2,
+        screenY + 35,
+        10,
+        5
+    );
+
+    ctx.fillRect(
+        player.x + 18,
+        screenY + 35,
+        10,
+        5
+    );
+}
+
+
+// ================================
+// 점프 조준선
+// ================================
+
+function drawAim() {
+
+    if (
+        !dragging ||
+        gameOver
+    ) {
+        return;
+    }
+
+
+    ctx.strokeStyle =
+        "rgba(46,125,50,0.6)";
+
+    ctx.lineWidth = 3;
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        player.x +
+        player.width / 2,
+
+        player.y -
+        cameraY +
+        player.height / 2
+    );
+
+    ctx.lineTo(
+        mouseX,
+        mouseY
+    );
+
+    ctx.stroke();
+
+
+    ctx.fillStyle =
+        "#2e7d32";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        mouseX,
+        mouseY,
+        8,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+
+// ================================
+// 게임 오버
+// ================================
+
+function endGame() {
+
+    gameOver = true;
+
+
+    document.getElementById(
+        "finalHeight"
+    ).textContent =
+        maxHeight;
+
+
+    document.getElementById(
+        "finalScore"
+    ).textContent =
+        score;
+
+
+    document.getElementById(
+        "gameOver"
+    ).style.display =
+        "block";
+}
+
+
+// ================================
+// 다시 하기
+// ================================
+
+function restartGame() {
+
+    player.x = 100;
+    player.y = 580;
+
+    player.velocityX = 0;
+    player.velocityY = 0;
+
+    player.grounded = false;
+
+
+    cameraY = 0;
+
+    maxHeight = 0;
+    score = 0;
+
+    gameOver = false;
+
+    dragging = false;
+
+
+    createStartingPlatforms();
+
+    createNewPlatforms();
+
+
+    document.getElementById(
+        "height"
+    ).textContent = "0";
+
+    document.getElementById(
+        "score"
+    ).textContent = "0";
+
+    document.getElementById(
+        "gameOver"
+    ).style.display =
+        "none";
+}
+
+
+// ================================
+// 게임 루프
+// ================================
+
+function gameLoop() {
+
+    updatePlayer();
+
+    drawBackground();
+
+    drawClouds();
+
+    drawPlatforms();
+
+    drawPlayer();
+
+    drawAim();
+
+
+    requestAnimationFrame(
+        gameLoop
+    );
+}
+
+
+// ================================
+// 게임 시작
+// ================================
+
+createStartingPlatforms();
+
+createNewPlatforms();
+
+gameLoop();
