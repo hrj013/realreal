@@ -1,6 +1,6 @@
 // ========================================
 // ECO JUMP
-// 마우스 드래그 점프 버전
+// 마우스 드래그 점프
 // ========================================
 
 
@@ -93,9 +93,6 @@ const platforms = [
 
 let isDragging = false;
 
-let aimStartX = 0;
-let aimStartY = 0;
-
 let aimX = 0;
 let aimY = 0;
 
@@ -104,18 +101,17 @@ let aimY = 0;
 // 점프 힘
 // ========================================
 
-// 최대 점프 힘을 조금 줄임
-
 const maxJumpPower = 15;
 
 
 // ========================================
-// 마우스 위치 가져오기
+// 마우스 위치
 // ========================================
 
 function getMousePosition(event) {
 
-    const rect = canvas.getBoundingClientRect();
+    const rect =
+        canvas.getBoundingClientRect();
 
     const scaleX =
         canvas.width / rect.width;
@@ -160,13 +156,6 @@ canvas.addEventListener(
 
 
         isDragging = true;
-
-
-        aimStartX =
-            player.x + player.width / 2;
-
-        aimStartY =
-            player.y + player.height / 2;
 
 
         aimX = mouse.x;
@@ -215,7 +204,6 @@ canvas.addEventListener(
 
         isDragging = false;
 
-
         jump();
 
     }
@@ -223,7 +211,7 @@ canvas.addEventListener(
 
 
 // ========================================
-// 마우스가 캔버스 밖으로 나간 경우
+// 마우스가 밖으로 나간 경우
 // ========================================
 
 canvas.addEventListener(
@@ -254,10 +242,12 @@ function jump() {
 
 
     const centerX =
-        player.x + player.width / 2;
+        player.x +
+        player.width / 2;
 
     const centerY =
-        player.y + player.height / 2;
+        player.y +
+        player.height / 2;
 
 
     let dx =
@@ -267,8 +257,6 @@ function jump() {
         aimY - centerY;
 
 
-    // 드래그 거리
-
     const distance =
         Math.sqrt(
             dx * dx +
@@ -276,32 +264,20 @@ function jump() {
         );
 
 
-    // 너무 조금 움직였으면 점프하지 않음
+    // 너무 짧은 드래그
 
     if (distance < 20) {
         return;
     }
 
 
-    // 방향 벡터
+    // 방향
 
     dx /= distance;
     dy /= distance;
 
 
-    // ========================================
     // 점프 힘
-    // ========================================
-    //
-    // 이전:
-    // distance / 10
-    //
-    // 현재:
-    // distance / 20
-    //
-    // → 같은 거리를 드래그해도
-    //   점프 힘이 더 작아짐
-    //
 
     const power =
         Math.min(
@@ -309,8 +285,6 @@ function jump() {
             maxJumpPower
         );
 
-
-    // 점프 방향
 
     player.velocityX =
         dx * power;
@@ -330,15 +304,17 @@ function jump() {
 
 function updatePlayer() {
 
-
     // 중력
 
-    player.velocityY += player.gravity;
+    player.velocityY +=
+        player.gravity;
 
 
-    player.x += player.velocityX;
+    player.x +=
+        player.velocityX;
 
-    player.y += player.velocityY;
+    player.y +=
+        player.velocityY;
 
 
     // ========================================
@@ -355,7 +331,8 @@ function updatePlayer() {
 
 
     if (
-        player.x + player.width >
+        player.x +
+        player.width >
         canvas.width
     ) {
 
@@ -369,13 +346,17 @@ function updatePlayer() {
 
 
     // ========================================
-    // 플랫폼 충돌
+    // 착지 판정
     // ========================================
+
+    player.grounded = false;
+
 
     for (const platform of platforms) {
 
         const playerBottom =
-            player.y + player.height;
+            player.y +
+            player.height;
 
 
         const previousBottom =
@@ -383,18 +364,46 @@ function updatePlayer() {
             player.velocityY;
 
 
-        const horizontalCollision =
-            player.x + player.width >
-            platform.x
-            &&
-            player.x <
-            platform.x + platform.width;
+        // 캐릭터의 좌우 범위
 
+        const playerLeft =
+            player.x;
+
+        const playerRight =
+            player.x +
+            player.width;
+
+
+        // 발판의 좌우 범위
+
+        const platformLeft =
+            platform.x;
+
+        const platformRight =
+            platform.x +
+            platform.width;
+
+
+        // ========================================
+        // 좌우가 조금이라도 겹치면 착지 가능
+        // ========================================
+
+        const horizontalCollision =
+            playerRight >
+            platformLeft
+            &&
+            playerLeft <
+            platformRight;
+
+
+        // 위에서 내려오는 중인지 확인
 
         const verticalCollision =
-            previousBottom <= platform.y
+            previousBottom <=
+            platform.y
             &&
-            playerBottom >= platform.y;
+            playerBottom >=
+            platform.y;
 
 
         if (
@@ -405,6 +414,8 @@ function updatePlayer() {
             verticalCollision
         ) {
 
+            // 발판 위에 정확히 올려놓기
+
             player.y =
                 platform.y -
                 player.height;
@@ -412,14 +423,16 @@ function updatePlayer() {
 
             player.velocityY = 0;
 
-
             player.velocityX *= 0.8;
 
 
             player.grounded = true;
 
 
-            score += 10;
+            // ====================================
+            // 중요!
+            // 착지한다고 점수 추가하지 않음
+            // ====================================
 
         }
 
@@ -427,16 +440,38 @@ function updatePlayer() {
 
 
     // ========================================
-    // 높이
+    // 높이 계산
     // ========================================
 
-    maxHeight =
+    const currentHeight =
         Math.max(
-            maxHeight,
+            0,
             Math.floor(
                 580 - player.y
             )
         );
+
+
+    // ========================================
+    // 새로운 최고 높이에 도달했을 때만
+    // 점수 증가
+    // ========================================
+
+    if (
+        currentHeight >
+        maxHeight
+    ) {
+
+        maxHeight =
+            currentHeight;
+
+
+        // 높이 1m = 1점
+
+        score =
+            maxHeight;
+
+    }
 
 
     // ========================================
@@ -526,14 +561,14 @@ function drawBackground() {
 
 
 // ========================================
-// 플랫폼
+// 플랫폼 그리기
 // ========================================
 
 function drawPlatforms() {
 
     for (const platform of platforms) {
 
-        // 플랫폼
+        // 발판
 
         ctx.fillStyle =
             "#4caf50";
@@ -566,7 +601,7 @@ function drawPlatforms() {
 
 
 // ========================================
-// 플레이어
+// 플레이어 그리기
 // ========================================
 
 function drawPlayer() {
@@ -693,9 +728,7 @@ function drawAim() {
     ctx.fill();
 
 
-    // ========================================
     // 힘 표시
-    // ========================================
 
     const dx =
         aimX - centerX;
@@ -720,7 +753,6 @@ function drawAim() {
 
     ctx.fillStyle =
         "#222";
-
 
     ctx.font =
         "18px Arial";
@@ -757,7 +789,7 @@ function updateHUD() {
 
 
 // ========================================
-// 그리기
+// 화면 그리기
 // ========================================
 
 function draw() {
