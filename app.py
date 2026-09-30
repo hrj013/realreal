@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from pathlib import Path
+import re
 
 from database.db import (
     create_tables,
@@ -18,30 +19,61 @@ def load_game_html():
 
     game_folder = Path(__file__).parent / "game"
 
+    # HTML 읽기
     html = (
         game_folder / "index.html"
     ).read_text(encoding="utf-8")
 
+    # CSS 읽기
     css = (
         game_folder / "game.css"
     ).read_text(encoding="utf-8")
 
+    # JavaScript 읽기
     js = (
         game_folder / "game.js"
     ).read_text(encoding="utf-8")
 
 
-    # CSS를 HTML 안에 직접 넣기
-    html = html.replace(
-        '<link rel="stylesheet" href="game.css">',
-        f"<style>{css}</style>"
+    # -------------------------
+    # 기존 CSS 연결 제거
+    # -------------------------
+
+    html = re.sub(
+        r'<link[^>]*game\.css[^>]*>',
+        '',
+        html
     )
 
 
-    # JavaScript를 HTML 안에 직접 넣기
+    # -------------------------
+    # 기존 JS 연결 제거
+    # -------------------------
+
+    html = re.sub(
+        r'<script[^>]*game\.js[^>]*></script>',
+        '',
+        html
+    )
+
+
+    # -------------------------
+    # CSS를 HTML에 직접 넣기
+    # -------------------------
+
     html = html.replace(
-        '<script src="game.js"></script>',
-        f"<script>{js}</script>"
+        '</head>',
+        f'<style>{css}</style></head>'
+    )
+
+
+    # -------------------------
+    # JS를 HTML에 직접 넣기
+    # -------------------------
+
+    html = html.replace(
+        '</body>',
+        f'<script>{js}</script></body>'
     )
 
 
