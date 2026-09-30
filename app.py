@@ -31,16 +31,14 @@ def load_game_html():
     ).read_text(encoding="utf-8")
 
 
-    # CSS를 HTML 안에 넣기
-
+    # CSS를 HTML 안에 직접 넣기
     html = html.replace(
         '<link rel="stylesheet" href="game.css">',
         f"<style>{css}</style>"
     )
 
 
-    # JavaScript를 HTML 안에 넣기
-
+    # JavaScript를 HTML 안에 직접 넣기
     html = html.replace(
         '<script src="game.js"></script>',
         f"<script>{js}</script>"
@@ -48,7 +46,6 @@ def load_game_html():
 
 
     return html
-
 
 # -------------------------
 # 데이터베이스 초기화
