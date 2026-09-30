@@ -100,9 +100,13 @@ let aimX = 0;
 let aimY = 0;
 
 
-// 최대 점프 힘
+// ========================================
+// 점프 힘
+// ========================================
 
-const maxJumpPower = 18;
+// 최대 점프 힘을 조금 줄임
+
+const maxJumpPower = 15;
 
 
 // ========================================
@@ -263,7 +267,7 @@ function jump() {
         aimY - centerY;
 
 
-    // 마우스가 너무 가까운 경우
+    // 드래그 거리
 
     const distance =
         Math.sqrt(
@@ -271,6 +275,8 @@ function jump() {
             dy * dy
         );
 
+
+    // 너무 조금 움직였으면 점프하지 않음
 
     if (distance < 20) {
         return;
@@ -283,17 +289,28 @@ function jump() {
     dy /= distance;
 
 
-    // 드래그 거리에 따른 힘
+    // ========================================
+    // 점프 힘
+    // ========================================
+    //
+    // 이전:
+    // distance / 10
+    //
+    // 현재:
+    // distance / 20
+    //
+    // → 같은 거리를 드래그해도
+    //   점프 힘이 더 작아짐
+    //
 
     const power =
         Math.min(
-            distance / 10,
+            distance / 20,
             maxJumpPower
         );
 
 
-    // 화면에서 아래쪽으로 드래그하면
-    // 게임에서는 위쪽으로 점프하도록 반전
+    // 점프 방향
 
     player.velocityX =
         dx * power;
@@ -324,7 +341,9 @@ function updatePlayer() {
     player.y += player.velocityY;
 
 
+    // ========================================
     // 좌우 벽
+    // ========================================
 
     if (player.x < 0) {
 
@@ -349,7 +368,9 @@ function updatePlayer() {
     }
 
 
+    // ========================================
     // 플랫폼 충돌
+    // ========================================
 
     for (const platform of platforms) {
 
@@ -391,6 +412,7 @@ function updatePlayer() {
 
             player.velocityY = 0;
 
+
             player.velocityX *= 0.8;
 
 
@@ -404,7 +426,9 @@ function updatePlayer() {
     }
 
 
+    // ========================================
     // 높이
+    // ========================================
 
     maxHeight =
         Math.max(
@@ -415,7 +439,9 @@ function updatePlayer() {
         );
 
 
+    // ========================================
     // 떨어짐
+    // ========================================
 
     if (
         player.y >
@@ -507,6 +533,8 @@ function drawPlatforms() {
 
     for (const platform of platforms) {
 
+        // 플랫폼
+
         ctx.fillStyle =
             "#4caf50";
 
@@ -518,6 +546,8 @@ function drawPlatforms() {
             platform.height
         );
 
+
+        // 잔디
 
         ctx.fillStyle =
             "#2e7d32";
@@ -540,6 +570,8 @@ function drawPlatforms() {
 // ========================================
 
 function drawPlayer() {
+
+    // 몸
 
     ctx.fillStyle =
         "#ff7043";
@@ -566,6 +598,7 @@ function drawPlayer() {
         8
     );
 
+
     ctx.fillRect(
         player.x + 24,
         player.y + 10,
@@ -586,6 +619,7 @@ function drawPlayer() {
         3,
         3
     );
+
 
     ctx.fillRect(
         player.x + 27,
@@ -659,7 +693,9 @@ function drawAim() {
     ctx.fill();
 
 
+    // ========================================
     // 힘 표시
+    // ========================================
 
     const dx =
         aimX - centerX;
@@ -677,7 +713,7 @@ function drawAim() {
 
     const power =
         Math.min(
-            distance / 10,
+            distance / 20,
             maxJumpPower
         );
 
@@ -798,12 +834,15 @@ function gameOver() {
 function restartGame() {
 
     player.x = 380;
+
     player.y = 580;
 
     player.velocityX = 0;
+
     player.velocityY = 0;
 
     score = 0;
+
     maxHeight = 0;
 
     player.grounded = true;
@@ -823,7 +862,7 @@ function restartGame() {
 
 
 // ========================================
-// 시작
+// 게임 시작
 // ========================================
 
 draw();
