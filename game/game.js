@@ -18,11 +18,12 @@ const groundFriction = 0.70;
 const stopSpeed = 0.15;
 
 const cameraFollowSpeed = 0.12;
-const cameraTargetOffset = 300;
+
+// 카메라 위치 조정: 기존 300에서 350으로 변경
+const cameraTargetOffset = 350;
 
 const startY = 580;
 
-// 맨 아래 고정 바닥
 const floorY = 750;
 const floorHeight = 40;
 
@@ -41,7 +42,7 @@ const player = {
 };
 
 // ========================================
-// 카메라, 점수, 난이도
+// 점수, 카메라, 난이도
 // ========================================
 
 let cameraY = 0;
@@ -49,7 +50,6 @@ let maxHeight = 0;
 let score = 0;
 let gameOver = false;
 
-// 300점마다 난이도 상승
 function getDifficulty() {
     return Math.min(5, Math.floor(maxHeight / 300));
 }
@@ -119,7 +119,7 @@ function createStartingPlatforms() {
 }
 
 // ========================================
-// 새 발판의 좌우 위치 정하기
+// 플랫폼 좌우 위치 생성
 // ========================================
 
 function getPlatformX(width, level) {
@@ -156,23 +156,22 @@ function getPlatformX(width, level) {
 }
 
 // ========================================
-// 위쪽 발판 생성
+// 위쪽 플랫폼 생성
 // ========================================
 
 function createNewPlatforms() {
     while (highestPlatformY > cameraY - 1000) {
         const level = getDifficulty();
 
-        // 높아질수록 발판 사이 세로 간격 증가
         const gapMin = 90 + level * 8;
         const gapRange = Math.max(25, 50 - level * 3);
         const gapY = gapMin + Math.random() * gapRange;
 
         highestPlatformY -= gapY;
 
-        // 높아질수록 발판 너비 감소
         const widthMax = Math.max(135, 190 - level * 12);
         const widthMin = Math.max(90, 120 - level * 6);
+
         const width =
             widthMin + Math.random() * (widthMax - widthMin);
 
@@ -214,8 +213,9 @@ function jump(targetX, targetY) {
         maxJumpPower
     );
 
-    player.velocityX = dx / distance * power;
-    player.velocityY = dy / distance * power;
+    player.velocityX = (dx / distance) * power;
+    player.velocityY = (dy / distance) * power;
+
     player.grounded = false;
 }
 
@@ -267,7 +267,7 @@ canvas.addEventListener("mouseleave", function() {
 });
 
 // ========================================
-// 발판 및 바닥 충돌
+// 충돌 판정
 // ========================================
 
 function checkPlatformCollision(previousY) {
@@ -295,7 +295,7 @@ function checkPlatformCollision(previousY) {
             previousBottom <= top &&
             currentBottom >= top;
 
-        // 발판 윗면 착지
+        // 플랫폼 윗면에 착지
         if (
             player.velocityY >= 0 &&
             horizontalOverlap &&
@@ -307,7 +307,7 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 발판 밑면 충돌
+        // 플랫폼 밑면에 부딪힘
         if (
             player.velocityY < 0 &&
             horizontalOverlap &&
@@ -319,7 +319,7 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 발판 옆면 충돌
+        // 플랫폼 옆면 충돌
         const verticalOverlap =
             playerBottom > top &&
             playerTop < bottom;
@@ -369,7 +369,7 @@ function updatePlayer() {
     player.x += player.velocityX;
     player.y += player.velocityY;
 
-    // 좌우 화면 경계
+    // 화면 좌우 경계
     if (player.x < 0) {
         player.x = 0;
         player.velocityX = 0;
@@ -384,7 +384,7 @@ function updatePlayer() {
 
     if (gameOver) return;
 
-    // 착지 후 좌우 미끄러짐 감소
+    // 미끄러짐 감소
     if (player.grounded) {
         player.velocityX *= groundFriction;
     } else {
@@ -395,7 +395,7 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
-    // 최고 높이에 따라 점수 계산
+    // 최고 높이 기준 점수
     const currentHeight = Math.max(
         0,
         Math.floor(startY - player.y)
@@ -408,22 +408,27 @@ function updatePlayer() {
         const heightElement = document.getElementById("height");
         const scoreElement = document.getElementById("score");
 
-        if (heightElement) heightElement.textContent = maxHeight;
-        if (scoreElement) scoreElement.textContent = score;
+        if (heightElement) {
+            heightElement.textContent = maxHeight;
+        }
+
+        if (scoreElement) {
+            scoreElement.textContent = score;
+        }
     }
 
-    // 카메라가 위아래로 캐릭터를 따라감
+    // 카메라가 캐릭터를 따라감
+    // cameraTargetOffset을 키우면 캐릭터가 화면에서 위쪽에 보임
     const targetCameraY = player.y - cameraTargetOffset;
 
     cameraY +=
         (targetCameraY - cameraY) * cameraFollowSpeed;
 
-    // 난이도에 맞춰 위쪽 발판 생성
     createNewPlatforms();
     removeOldPlatforms();
 
-    // 난이도 표시 요소가 있으면 갱신
-    const difficultyElement = document.getElementById("difficulty");
+    const difficultyElement =
+        document.getElementById("difficulty");
 
     if (difficultyElement) {
         difficultyElement.textContent = getDifficultyName();
@@ -454,7 +459,9 @@ function drawClouds() {
     for (const cloud of clouds) {
         const y = cloud.y - cameraY * 0.3;
 
-        if (y < -100 || y > canvas.height + 100) continue;
+        if (y < -100 || y > canvas.height + 100) {
+            continue;
+        }
 
         ctx.fillStyle = "rgba(255,255,255,0.7)";
         ctx.beginPath();
@@ -473,7 +480,10 @@ function drawPlatforms() {
     for (const platform of platforms) {
         const screenY = platform.y - cameraY;
 
-        if (screenY < -50 || screenY > canvas.height + 50) {
+        if (
+            screenY < -50 ||
+            screenY > canvas.height + 50
+        ) {
             continue;
         }
 
@@ -591,12 +601,22 @@ function endGame() {
     gameOver = true;
     dragging = false;
 
-    const finalHeight = document.getElementById("finalHeight");
-    const finalScore = document.getElementById("finalScore");
-    const gameOverElement = document.getElementById("gameOver");
+    const finalHeight =
+        document.getElementById("finalHeight");
 
-    if (finalHeight) finalHeight.textContent = maxHeight;
-    if (finalScore) finalScore.textContent = score;
+    const finalScore =
+        document.getElementById("finalScore");
+
+    const gameOverElement =
+        document.getElementById("gameOver");
+
+    if (finalHeight) {
+        finalHeight.textContent = maxHeight;
+    }
+
+    if (finalScore) {
+        finalScore.textContent = score;
+    }
 
     if (gameOverElement) {
         gameOverElement.style.display = "block";
