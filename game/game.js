@@ -18,12 +18,9 @@ const groundFriction = 0.70;
 const stopSpeed = 0.15;
 
 const cameraFollowSpeed = 0.12;
-
-// 카메라 위치 조정: 기존 300에서 350으로 변경
 const cameraTargetOffset = 350;
 
 const startY = 580;
-
 const floorY = 750;
 const floorHeight = 40;
 
@@ -50,8 +47,9 @@ let maxHeight = 0;
 let score = 0;
 let gameOver = false;
 
+// 500점마다 난이도 상승
 function getDifficulty() {
-    return Math.min(5, Math.floor(maxHeight / 300));
+    return Math.min(5, Math.floor(maxHeight / 500));
 }
 
 function getDifficultyName() {
@@ -295,7 +293,7 @@ function checkPlatformCollision(previousY) {
             previousBottom <= top &&
             currentBottom >= top;
 
-        // 플랫폼 윗면에 착지
+        // 플랫폼 윗면 착지
         if (
             player.velocityY >= 0 &&
             horizontalOverlap &&
@@ -307,7 +305,7 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 플랫폼 밑면에 부딪힘
+        // 플랫폼 밑면 충돌
         if (
             player.velocityY < 0 &&
             horizontalOverlap &&
@@ -384,7 +382,7 @@ function updatePlayer() {
 
     if (gameOver) return;
 
-    // 미끄러짐 감소
+    // 착지 후 미끄러짐 감소
     if (player.grounded) {
         player.velocityX *= groundFriction;
     } else {
@@ -417,16 +415,17 @@ function updatePlayer() {
         }
     }
 
-    // 카메라가 캐릭터를 따라감
-    // cameraTargetOffset을 키우면 캐릭터가 화면에서 위쪽에 보임
+    // 카메라가 플레이어를 따라감
     const targetCameraY = player.y - cameraTargetOffset;
 
     cameraY +=
         (targetCameraY - cameraY) * cameraFollowSpeed;
 
+    // 발판 생성 및 정리
     createNewPlatforms();
     removeOldPlatforms();
 
+    // 난이도 표시
     const difficultyElement =
         document.getElementById("difficulty");
 
