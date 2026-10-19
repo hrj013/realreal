@@ -26,9 +26,6 @@ const startY = 580;
 const floorY = 750;
 const floorHeight = 40;
 
-// 발판 좌우 간격 설정
-const minHorizontalGap = 35;
-
 // ========================================
 // 플레이어
 // ========================================
@@ -44,13 +41,29 @@ const player = {
 };
 
 // ========================================
-// 카메라와 점수
+// 카메라, 점수, 난이도
 // ========================================
 
 let cameraY = 0;
 let maxHeight = 0;
 let score = 0;
 let gameOver = false;
+
+// 300점마다 난이도 상승
+function getDifficulty() {
+    return Math.min(5, Math.floor(maxHeight / 300));
+}
+
+function getDifficultyName() {
+    const level = getDifficulty();
+
+    if (level === 0) return "쉬움";
+    if (level === 1) return "보통";
+    if (level === 2) return "도전";
+    if (level === 3) return "어려움";
+    if (level === 4) return "매우 어려움";
+    return "최고 난이도";
+}
 
 // ========================================
 // 마우스 조작
@@ -74,27 +87,32 @@ function createStartingPlatforms() {
 
     platforms.push({
         x: 50, y: 620,
-        width: 180, height: 20
+        width: 180, height: 20,
+        level: 0
     });
 
     platforms.push({
         x: 300, y: 520,
-        width: 160, height: 20
+        width: 160, height: 20,
+        level: 0
     });
 
     platforms.push({
         x: 100, y: 410,
-        width: 180, height: 20
+        width: 180, height: 20,
+        level: 0
     });
 
     platforms.push({
         x: 420, y: 300,
-        width: 170, height: 20
+        width: 170, height: 20,
+        level: 0
     });
 
     platforms.push({
         x: 200, y: 190,
-        width: 180, height: 20
+        width: 180, height: 20,
+        level: 0
     });
 
     highestPlatformY = 190;
@@ -104,58 +122,68 @@ function createStartingPlatforms() {
 // 새 발판의 좌우 위치 정하기
 // ========================================
 
-function getPlatformX(width) {
+function getPlatformX(width, level) {
     const maxX = canvas.width - width;
     const previous = platforms[platforms.length - 1];
 
-    // 첫 발판이거나 비교할 발판이 없을 때
     if (!previous) {
         return Math.random() * maxX;
     }
 
     const previousCenter = previous.x + previous.width / 2;
 
-    // 이전 발판과 중심 위치가 너무 비슷하지 않도록
-    // 가능한 위치를 여러 번 선택
-    for (let i = 0; i < 30; i++) {
+    const minHorizontalGap = 35 + level * 15;
+    const maxHorizontalGap = 280 + level * 15;
+
+    let fallbackX = Math.random() * maxX;
+
+    for (let i = 0; i < 80; i++) {
         const x = Math.random() * maxX;
         const center = x + width / 2;
+        const distance = Math.abs(center - previousCenter);
 
-        if (Math.abs(center - previousCenter) >= minHorizontalGap) {
+        fallbackX = x;
+
+        if (
+            distance >= minHorizontalGap &&
+            distance <= maxHorizontalGap
+        ) {
             return x;
         }
     }
 
-    // 적절한 위치를 찾지 못하면 반대쪽으로 조금 이동
-    let x = Math.random() * maxX;
-
-    if (x + width / 2 < previousCenter) {
-        x = Math.max(0, previousCenter - width / 2 - minHorizontalGap);
-    } else {
-        x = Math.min(maxX, previousCenter - width / 2 + minHorizontalGap);
-    }
-
-    return Math.max(0, Math.min(maxX, x));
+    return fallbackX;
 }
 
 // ========================================
-// 위쪽에 무한 플랫폼 생성
+// 위쪽 발판 생성
 // ========================================
 
 function createNewPlatforms() {
     while (highestPlatformY > cameraY - 1000) {
-        const gapY = 90 + Math.random() * 50;
+        const level = getDifficulty();
+
+        // 높아질수록 발판 사이 세로 간격 증가
+        const gapMin = 90 + level * 8;
+        const gapRange = Math.max(25, 50 - level * 3);
+        const gapY = gapMin + Math.random() * gapRange;
+
         highestPlatformY -= gapY;
 
-        // 기존보다 발판 너비 범위를 살짝 줄임
-        const width = 120 + Math.random() * 70;
-        const x = getPlatformX(width);
+        // 높아질수록 발판 너비 감소
+        const widthMax = Math.max(135, 190 - level * 12);
+        const widthMin = Math.max(90, 120 - level * 6);
+        const width =
+            widthMin + Math.random() * (widthMax - widthMin);
+
+        const x = getPlatformX(width, level);
 
         platforms.push({
             x: x,
             y: highestPlatformY,
             width: width,
-            height: 20
+            height: 20,
+            level: level
         });
     }
 }
@@ -263,11 +291,11 @@ function checkPlatformCollision(previousY) {
             playerRight > left &&
             playerLeft < right;
 
-        // 발판 윗면 착지
         const crossedTop =
             previousBottom <= top &&
             currentBottom >= top;
 
+        // 발판 윗면 착지
         if (
             player.velocityY >= 0 &&
             horizontalOverlap &&
@@ -315,7 +343,7 @@ function checkPlatformCollision(previousY) {
         }
     }
 
-    // 맨 아래 바닥에 떨어지면 게임 오버
+    // 바닥에 떨어지면 게임 오버
     const playerBottom = player.y + player.height;
 
     if (
@@ -356,7 +384,7 @@ function updatePlayer() {
 
     if (gameOver) return;
 
-    // 발판 위에서 미끄러지는 속도 줄이기
+    // 착지 후 좌우 미끄러짐 감소
     if (player.grounded) {
         player.velocityX *= groundFriction;
     } else {
@@ -367,7 +395,7 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
-    // 최고 높이 점수
+    // 최고 높이에 따라 점수 계산
     const currentHeight = Math.max(
         0,
         Math.floor(startY - player.y)
@@ -390,9 +418,16 @@ function updatePlayer() {
     cameraY +=
         (targetCameraY - cameraY) * cameraFollowSpeed;
 
-    // 위쪽 발판만 계속 생성
+    // 난이도에 맞춰 위쪽 발판 생성
     createNewPlatforms();
     removeOldPlatforms();
+
+    // 난이도 표시 요소가 있으면 갱신
+    const difficultyElement = document.getElementById("difficulty");
+
+    if (difficultyElement) {
+        difficultyElement.textContent = getDifficultyName();
+    }
 }
 
 // ========================================
@@ -442,7 +477,16 @@ function drawPlatforms() {
             continue;
         }
 
-        ctx.fillStyle = "#4caf50";
+        const level = platform.level || 0;
+
+        if (level >= 4) {
+            ctx.fillStyle = "#388e3c";
+        } else if (level >= 2) {
+            ctx.fillStyle = "#43a047";
+        } else {
+            ctx.fillStyle = "#4caf50";
+        }
+
         ctx.fillRect(
             platform.x,
             screenY,
@@ -581,9 +625,14 @@ function restartGame() {
     const heightElement = document.getElementById("height");
     const scoreElement = document.getElementById("score");
     const gameOverElement = document.getElementById("gameOver");
+    const difficultyElement = document.getElementById("difficulty");
 
     if (heightElement) heightElement.textContent = "0";
     if (scoreElement) scoreElement.textContent = "0";
+
+    if (difficultyElement) {
+        difficultyElement.textContent = getDifficultyName();
+    }
 
     if (gameOverElement) {
         gameOverElement.style.display = "none";
