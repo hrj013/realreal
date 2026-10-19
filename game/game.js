@@ -20,12 +20,14 @@ const stopSpeed = 0.15;
 const cameraFollowSpeed = 0.12;
 const cameraTargetOffset = 300;
 
-// 게임 시작 위치
 const startY = 580;
 
 // 맨 아래 고정 바닥
 const floorY = 750;
 const floorHeight = 40;
+
+// 발판 좌우 간격 설정
+const minHorizontalGap = 35;
 
 // ========================================
 // 플레이어
@@ -99,6 +101,44 @@ function createStartingPlatforms() {
 }
 
 // ========================================
+// 새 발판의 좌우 위치 정하기
+// ========================================
+
+function getPlatformX(width) {
+    const maxX = canvas.width - width;
+    const previous = platforms[platforms.length - 1];
+
+    // 첫 발판이거나 비교할 발판이 없을 때
+    if (!previous) {
+        return Math.random() * maxX;
+    }
+
+    const previousCenter = previous.x + previous.width / 2;
+
+    // 이전 발판과 중심 위치가 너무 비슷하지 않도록
+    // 가능한 위치를 여러 번 선택
+    for (let i = 0; i < 30; i++) {
+        const x = Math.random() * maxX;
+        const center = x + width / 2;
+
+        if (Math.abs(center - previousCenter) >= minHorizontalGap) {
+            return x;
+        }
+    }
+
+    // 적절한 위치를 찾지 못하면 반대쪽으로 조금 이동
+    let x = Math.random() * maxX;
+
+    if (x + width / 2 < previousCenter) {
+        x = Math.max(0, previousCenter - width / 2 - minHorizontalGap);
+    } else {
+        x = Math.min(maxX, previousCenter - width / 2 + minHorizontalGap);
+    }
+
+    return Math.max(0, Math.min(maxX, x));
+}
+
+// ========================================
 // 위쪽에 무한 플랫폼 생성
 // ========================================
 
@@ -107,8 +147,9 @@ function createNewPlatforms() {
         const gapY = 90 + Math.random() * 50;
         highestPlatformY -= gapY;
 
-        const width = 120 + Math.random() * 90;
-        const x = Math.random() * (canvas.width - width);
+        // 기존보다 발판 너비 범위를 살짝 줄임
+        const width = 120 + Math.random() * 70;
+        const x = getPlatformX(width);
 
         platforms.push({
             x: x,
@@ -121,8 +162,7 @@ function createNewPlatforms() {
 
 function removeOldPlatforms() {
     for (let i = platforms.length - 1; i >= 0; i--) {
-        // 바닥보다 아래에 있는 발판은 제거하지 않음
-        if (platforms[i].y > cameraY + canvas.height + 700) {
+        if (platforms[i].y < cameraY - 1100) {
             platforms.splice(i, 1);
         }
     }
@@ -208,7 +248,6 @@ function checkPlatformCollision(previousY) {
     const previousBottom = previousY + player.height;
     const currentBottom = player.y + player.height;
 
-    // 일반 발판 충돌
     for (const platform of platforms) {
         const left = platform.x;
         const right = platform.x + platform.width;
@@ -224,11 +263,11 @@ function checkPlatformCollision(previousY) {
             playerRight > left &&
             playerLeft < right;
 
+        // 발판 윗면 착지
         const crossedTop =
             previousBottom <= top &&
             currentBottom >= top;
 
-        // 발판 위에서 착지
         if (
             player.velocityY >= 0 &&
             horizontalOverlap &&
@@ -240,7 +279,7 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 발판 밑면에 충돌
+        // 발판 밑면 충돌
         if (
             player.velocityY < 0 &&
             horizontalOverlap &&
@@ -276,9 +315,7 @@ function checkPlatformCollision(previousY) {
         }
     }
 
-    // 맨 아래 고정 바닥
-    const playerLeft = player.x;
-    const playerRight = player.x + player.width;
+    // 맨 아래 바닥에 떨어지면 게임 오버
     const playerBottom = player.y + player.height;
 
     if (
@@ -286,7 +323,6 @@ function checkPlatformCollision(previousY) {
         previousBottom <= floorY &&
         playerBottom >= floorY
     ) {
-        // 바닥에 닿으면 게임 오버
         endGame();
     }
 }
@@ -300,8 +336,8 @@ function updatePlayer() {
 
     const previousY = player.y;
 
-    // 중력과 이동
     player.velocityY += gravity;
+
     player.x += player.velocityX;
     player.y += player.velocityY;
 
@@ -316,12 +352,11 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
-    // 발판 충돌 및 바닥 게임 오버 확인
     checkPlatformCollision(previousY);
 
     if (gameOver) return;
 
-    // 마찰
+    // 발판 위에서 미끄러지는 속도 줄이기
     if (player.grounded) {
         player.velocityX *= groundFriction;
     } else {
@@ -332,7 +367,7 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
-    // 최고 높이에 따라 점수 계산
+    // 최고 높이 점수
     const currentHeight = Math.max(
         0,
         Math.floor(startY - player.y)
@@ -349,13 +384,13 @@ function updatePlayer() {
         if (scoreElement) scoreElement.textContent = score;
     }
 
-    // 카메라가 위아래로 부드럽게 따라감
+    // 카메라가 위아래로 캐릭터를 따라감
     const targetCameraY = player.y - cameraTargetOffset;
 
     cameraY +=
         (targetCameraY - cameraY) * cameraFollowSpeed;
 
-    // 위쪽 발판만 무한 생성
+    // 위쪽 발판만 계속 생성
     createNewPlatforms();
     removeOldPlatforms();
 }
@@ -432,7 +467,6 @@ function drawPlatforms() {
 function drawFloor() {
     const screenY = floorY - cameraY;
 
-    // 바닥이 화면에 보일 때만 그림
     if (
         screenY < canvas.height &&
         screenY + floorHeight > 0
