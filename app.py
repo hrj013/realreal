@@ -1,8 +1,7 @@
+
 import streamlit as st
 import streamlit.components.v1 as components
-
 from pathlib import Path
-import re
 
 from database.db import (
     create_tables,
@@ -10,166 +9,8 @@ from database.db import (
     login_user
 )
 
-
 # -------------------------
-# 게임 HTML 불러오기
-# -------------------------
-
-def load_game_html():
-
-    game_folder = Path(__file__).parent / "game"
-
-    # CSS 파일 읽기
-    css = (
-        game_folder / "game.css"
-    ).read_text(encoding="utf-8")
-
-    # JavaScript 파일 읽기
-    js = (
-        game_folder / "game.js"
-    ).read_text(encoding="utf-8")
-
-
-    # HTML을 직접 만들어서 CSS와 JS를 넣는다
-    html = f"""
-<!DOCTYPE html>
-
-<html lang="ko">
-
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <title>Eco Jump</title>
-
-    <style>
-        {css}
-    </style>
-
-</head>
-
-
-<body>
-
-<div id="game-container">
-
-    <div id="hud">
-
-        <div>
-            🌱 ECO JUMP
-        </div>
-
-        <div>
-            HEIGHT:
-            <span id="height">0</span> m
-        </div>
-
-        <div>
-            SCORE:
-            <span id="score">0</span>
-        </div>
-
-    </div>
-
-
-    <canvas id="gameCanvas"></canvas>
-
-
-    <div id="gameOver">
-
-        <h1>GAME OVER</h1>
-
-        <p>
-            최고 높이:
-            <strong>
-                <span id="finalHeight">0</span>m
-            </strong>
-        </p>
-
-        <p>
-            점수:
-            <strong>
-                <span id="finalScore">0</span>
-            </strong>
-        </p>
-
-        <button onclick="restartGame()">
-            다시 하기
-        </button>
-
-    </div>
-
-</div>
-
-
-<script>
-{js}
-</script>
-
-</body>
-
-</html>
-"""
-
-    return html
-
-
-    # -------------------------
-    # 기존 CSS 연결 제거
-    # -------------------------
-
-    html = re.sub(
-        r'<link[^>]*game\.css[^>]*>',
-        '',
-        html
-    )
-
-
-    # -------------------------
-    # 기존 JS 연결 제거
-    # -------------------------
-
-    html = re.sub(
-        r'<script[^>]*game\.js[^>]*></script>',
-        '',
-        html
-    )
-
-
-    # -------------------------
-    # CSS를 HTML에 직접 넣기
-    # -------------------------
-
-    html = html.replace(
-        '</head>',
-        f'<style>{css}</style></head>'
-    )
-
-
-    # -------------------------
-    # JS를 HTML에 직접 넣기
-    # -------------------------
-
-    html = html.replace(
-        '</body>',
-        f'<script>{js}</script></body>'
-    )
-
-
-    return html
-
-# -------------------------
-# 데이터베이스 초기화
-# -------------------------
-
-create_tables()
-
-
-# -------------------------
-# 페이지 설정
+# 페이지 설정 및 DB 초기화
 # -------------------------
 
 st.set_page_config(
@@ -177,6 +18,59 @@ st.set_page_config(
     page_icon="🌱",
     layout="centered"
 )
+
+create_tables()
+
+
+# -------------------------
+# 게임 HTML 불러오기
+# -------------------------
+
+def load_game_html():
+    game_folder = Path(__file__).parent / "game"
+
+    css = (game_folder / "game.css").read_text(
+        encoding="utf-8"
+    )
+    js = (game_folder / "game.js").read_text(
+        encoding="utf-8"
+    )
+
+    html = f"""
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+    <title>Eco Jump</title>
+    <style>{css}</style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="hud">
+            <div>🌱 ECO JUMP</div>
+            <div>HEIGHT: <span id="height">0</span> m</div>
+            <div>SCORE: <span id="score">0</span></div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="gameOver">
+            <h1>GAME OVER</h1>
+            <p>최고 높이: <strong><span id="finalHeight">0</span>m</strong></p>
+            <p>점수: <strong><span id="finalScore">0</span></strong></p>
+            <button onclick="restartGame()">다시 하기</button>
+        </div>
+    </div>
+
+    <script>
+    {js}
+    </script>
+</body>
+</html>
+"""
+    return html
 
 
 # -------------------------
@@ -194,254 +88,150 @@ if "playing" not in st.session_state:
 
 
 # -------------------------
-# 로그인된 경우
+# 메인 게임 페이지
 # -------------------------
 
-if st.session_state.logged_in:
+def home_page():
 
-    user = st.session_state.user
+    if st.session_state.logged_in:
+        user = st.session_state.user
 
-    st.title("🌱 Eco Jump")
+        st.title("🌱 Eco Jump")
+        st.success(f"환영합니다, {user[1]}님!")
 
-    st.success(
-        f"환영합니다, {user[1]}님!"
-    )
+        col1, col2 = st.columns(2)
 
-    st.write("---")
+        with col1:
+            st.metric("🪙 COIN", user[2])
 
+        with col2:
+            st.metric("🌱 GREEN POINT", user[3])
 
-    # -------------------------
-    # 코인 / 그린 포인트
-    # -------------------------
+        st.divider()
+        st.subheader("🎮 GAME")
 
-    col1, col2 = st.columns(2)
+        if st.button("🎮 GAME START", use_container_width=True):
+            st.session_state.playing = True
 
-    with col1:
+        if st.session_state.playing:
+            components.html(
+                load_game_html(),
+                height=720,
+                scrolling=False
+            )
 
-        st.metric(
-            "🪙 COIN",
-            user[2]
+        st.write("")
+
+        if st.button("로그아웃"):
+            st.session_state.logged_in = False
+            st.session_state.user = None
+            st.session_state.playing = False
+            st.rerun()
+
+    else:
+        st.title("🌱 ECO JUMP")
+        st.write("탄소를 줄이고 더 높이 점프하세요!")
+
+        login_tab, signup_tab = st.tabs(
+            ["🔐 로그인", "📝 회원가입"]
         )
 
-    with col2:
+        with login_tab:
+            st.subheader("로그인")
 
-        st.metric(
-            "🌱 GREEN POINT",
-            user[3]
-        )
+            username = st.text_input(
+                "아이디",
+                key="login_username"
+            )
 
+            password = st.text_input(
+                "비밀번호",
+                type="password",
+                key="login_password"
+            )
 
-    st.write("")
+            if st.button("로그인", use_container_width=True):
+                if not username or not password:
+                    st.warning("아이디와 비밀번호를 입력해주세요.")
+                else:
+                    user = login_user(username, password)
 
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.user = user
+                        st.session_state.playing = False
+                        st.rerun()
+                    else:
+                        st.error(
+                            "아이디 또는 비밀번호가 올바르지 않습니다."
+                        )
 
-    # -------------------------
-    # 게임
-    # -------------------------
+        with signup_tab:
+            st.subheader("회원가입")
 
-    st.subheader("🎮 GAME")
+            new_username = st.text_input(
+                "아이디",
+                key="signup_username"
+            )
 
+            new_password = st.text_input(
+                "비밀번호",
+                type="password",
+                key="signup_password"
+            )
 
-    if st.button(
-        "🎮 GAME START",
-        use_container_width=True
-    ):
+            password_confirm = st.text_input(
+                "비밀번호 확인",
+                type="password",
+                key="signup_password_confirm"
+            )
 
-        st.session_state.playing = True
+            if st.button("회원가입", use_container_width=True):
+                if not new_username or not new_password:
+                    st.warning("아이디와 비밀번호를 입력해주세요.")
 
+                elif new_password != password_confirm:
+                    st.error("비밀번호가 서로 다릅니다.")
 
-    # 게임 실행
-
-    if st.session_state.playing:
-
-        game_html = load_game_html()
-
-        components.html(
-            game_html,
-            height=720,
-            scrolling=False
-        )
-
-
-    st.write("")
-
-
-    # -------------------------
-    # 로그아웃
-    # -------------------------
-
-    if st.button(
-        "로그아웃"
-    ):
-
-        st.session_state.logged_in = False
-
-        st.session_state.user = None
-
-        st.session_state.playing = False
-
-        st.rerun()
-
-
-# -------------------------
-# 로그인하지 않은 경우
-# -------------------------
-
-else:
-
-    st.title("🌱 ECO JUMP")
-
-    st.write(
-        "탄소를 줄이고 더 높이 점프하세요!"
-    )
-
-    st.write("")
-
-
-    # -------------------------
-    # 탭
-    # -------------------------
-
-    login_tab, signup_tab = st.tabs(
-        ["🔐 로그인", "📝 회원가입"]
-    )
-
-
-    # =========================
-    # 로그인
-    # =========================
-
-    with login_tab:
-
-        st.subheader("로그인")
-
-
-        username = st.text_input(
-            "아이디",
-            key="login_username"
-        )
-
-
-        password = st.text_input(
-            "비밀번호",
-            type="password",
-            key="login_password"
-        )
-
-
-        if st.button(
-            "로그인",
-            use_container_width=True
-        ):
-
-            if not username or not password:
-
-                st.warning(
-                    "아이디와 비밀번호를 입력해주세요."
-                )
-
-            else:
-
-                user = login_user(
-                    username,
-                    password
-                )
-
-
-                if user:
-
-                    st.session_state.logged_in = True
-
-                    st.session_state.user = user
-
-                    st.session_state.playing = False
-
-                    st.success(
-                        "로그인 성공!"
-                    )
-
-                    st.rerun()
-
+                elif len(new_password) < 4:
+                    st.warning("비밀번호는 4자 이상 입력해주세요.")
 
                 else:
-
-                    st.error(
-                        "아이디 또는 비밀번호가 올바르지 않습니다."
+                    success = register_user(
+                        new_username,
+                        new_password
                     )
 
+                    if success:
+                        st.success(
+                            "회원가입이 완료되었습니다! "
+                            "로그인 탭에서 로그인해주세요."
+                        )
+                    else:
+                        st.error("이미 존재하는 아이디입니다.")
 
-    # =========================
-    # 회원가입
-    # =========================
 
-    with signup_tab:
+# -------------------------
+# 페이지 메뉴 등록
+# -------------------------
 
-        st.subheader("회원가입")
-
-
-        new_username = st.text_input(
-            "아이디",
-            key="signup_username"
+pages = {
+    "게임": [
+        st.Page(
+            home_page,
+            title="Eco Jump",
+            icon="🎮",
+            default=True
         )
-
-
-        new_password = st.text_input(
-            "비밀번호",
-            type="password",
-            key="signup_password"
+    ],
+    "환경보호": [
+        st.Page(
+            "pages/eco_reward.py",
+            title="환경보호 보상",
+            icon="🌱"
         )
+    ]
+}
 
-
-        password_confirm = st.text_input(
-            "비밀번호 확인",
-            type="password",
-            key="signup_password_confirm"
-        )
-
-
-        if st.button(
-            "회원가입",
-            use_container_width=True
-        ):
-
-            if not new_username or not new_password:
-
-                st.warning(
-                    "아이디와 비밀번호를 입력해주세요."
-                )
-
-
-            elif new_password != password_confirm:
-
-                st.error(
-                    "비밀번호가 서로 다릅니다."
-                )
-
-
-            elif len(new_password) < 4:
-
-                st.warning(
-                    "비밀번호는 4자 이상 입력해주세요."
-                )
-
-
-            else:
-
-                success = register_user(
-                    new_username,
-                    new_password
-                )
-
-
-                if success:
-
-                    st.success(
-                        "회원가입이 완료되었습니다! "
-                        "로그인 탭에서 로그인해주세요."
-                    )
-
-
-                else:
-
-                    st.error(
-                        "이미 존재하는 아이디입니다."
-                    )
+navigation = st.navigation(pages)
+navigation.run()
