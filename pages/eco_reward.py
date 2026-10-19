@@ -8,12 +8,6 @@ from database.db import get_connection
 # 페이지 설정
 # =========================================
 
-st.set_page_config(
-    page_title="Eco Jump | 환경보호 보상",
-    page_icon="🌱",
-    layout="wide"
-)
-
 st.title("🌱 환경보호 실천 보상")
 st.write("작은 실천을 기록하고, 초록 포인트를 모아 보상을 받아 보세요!")
 
