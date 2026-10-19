@@ -13,13 +13,13 @@ const gravity = 0.5;
 const maxJumpPower = 15;
 const distancePower = 20;
 
-// 공중과 발판 위의 마찰
 const airFriction = 0.98;
 const groundFriction = 0.70;
-
-// 거의 멈춘 속도는 0으로 처리
 const stopSpeed = 0.15;
 
+// 카메라 설정
+const cameraFollowSpeed = 0.12;
+const cameraTargetOffset = 300;
 
 // ========================================
 // 플레이어
@@ -35,7 +35,6 @@ const player = {
     grounded: false
 };
 
-
 // ========================================
 // 카메라와 점수
 // ========================================
@@ -44,7 +43,6 @@ let cameraY = 0;
 let maxHeight = 0;
 let score = 0;
 let gameOver = false;
-
 
 // ========================================
 // 마우스 조작
@@ -55,7 +53,6 @@ let mouseStartX = 0;
 let mouseStartY = 0;
 let mouseX = 0;
 let mouseY = 0;
-
 
 // ========================================
 // 플랫폼
@@ -95,12 +92,12 @@ function createStartingPlatforms() {
     highestPlatformY = 190;
 }
 
-
 // ========================================
 // 무한 플랫폼 생성
 // ========================================
 
 function createNewPlatforms() {
+    // 카메라 위쪽에 발판을 계속 생성
     while (highestPlatformY > cameraY - 1000) {
         const gapY = 90 + Math.random() * 50;
         highestPlatformY -= gapY;
@@ -109,23 +106,49 @@ function createNewPlatforms() {
         const x = Math.random() * (canvas.width - width);
 
         platforms.push({
-            x,
+            x: x,
             y: highestPlatformY,
-            width,
+            width: width,
+            height: 20
+        });
+    }
+
+    // 캐릭터가 아래로 내려갈 때도 아래쪽 발판 생성
+    let lowestPlatformY = -Infinity;
+
+    for (const platform of platforms) {
+        lowestPlatformY = Math.max(
+            lowestPlatformY,
+            platform.y
+        );
+    }
+
+    while (lowestPlatformY < cameraY + canvas.height + 500) {
+        const gapY = 90 + Math.random() * 50;
+        lowestPlatformY += gapY;
+
+        const width = 120 + Math.random() * 90;
+        const x = Math.random() * (canvas.width - width);
+
+        platforms.push({
+            x: x,
+            y: lowestPlatformY,
+            width: width,
             height: 20
         });
     }
 }
 
-
 function removeOldPlatforms() {
     for (let i = platforms.length - 1; i >= 0; i--) {
-        if (platforms[i].y > cameraY + 900) {
+        if (
+            platforms[i].y < cameraY - 1100 ||
+            platforms[i].y > cameraY + canvas.height + 700
+        ) {
             platforms.splice(i, 1);
         }
     }
 }
-
 
 // ========================================
 // 점프
@@ -147,10 +170,8 @@ function jump(targetX, targetY) {
 
     player.velocityX = dx / distance * power;
     player.velocityY = dy / distance * power;
-
     player.grounded = false;
 }
-
 
 // ========================================
 // 마우스 이벤트
@@ -163,8 +184,11 @@ canvas.addEventListener("mousedown", function(event) {
 
     const rect = canvas.getBoundingClientRect();
 
-    mouseStartX = (event.clientX - rect.left) * canvas.width / rect.width;
-    mouseStartY = (event.clientY - rect.top) * canvas.height / rect.height;
+    mouseStartX =
+        (event.clientX - rect.left) * canvas.width / rect.width;
+
+    mouseStartY =
+        (event.clientY - rect.top) * canvas.height / rect.height;
 
     mouseX = mouseStartX;
     mouseY = mouseStartY;
@@ -175,8 +199,11 @@ canvas.addEventListener("mousemove", function(event) {
 
     const rect = canvas.getBoundingClientRect();
 
-    mouseX = (event.clientX - rect.left) * canvas.width / rect.width;
-    mouseY = (event.clientY - rect.top) * canvas.height / rect.height;
+    mouseX =
+        (event.clientX - rect.left) * canvas.width / rect.width;
+
+    mouseY =
+        (event.clientY - rect.top) * canvas.height / rect.height;
 });
 
 canvas.addEventListener("mouseup", function() {
@@ -193,9 +220,8 @@ canvas.addEventListener("mouseleave", function() {
     jump(mouseX, mouseY);
 });
 
-
 // ========================================
-// 정확한 플랫폼 충돌
+// 플랫폼 충돌
 // ========================================
 
 function checkPlatformCollision(previousY) {
@@ -215,12 +241,11 @@ function checkPlatformCollision(previousY) {
         const playerTop = player.y;
         const playerBottom = player.y + player.height;
 
-        // 위에서 내려오며 착지:
-        // 좌우 여유 범위 없이 실제 발판과 겹쳐야 함.
         const horizontalOverlap =
             playerRight > left &&
             playerLeft < right;
 
+        // 위에서 내려와 발판 윗면에 착지
         const crossedTop =
             previousBottom <= top &&
             currentBottom >= top;
@@ -236,14 +261,10 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 아래에서 발판 밑면에 부딪힘
-        const horizontalOverlapNow =
-            playerRight > left &&
-            playerLeft < right;
-
+        // 발판 밑면에 충돌
         if (
             player.velocityY < 0 &&
-            horizontalOverlapNow &&
+            horizontalOverlap &&
             playerTop < bottom &&
             playerBottom > bottom
         ) {
@@ -252,7 +273,7 @@ function checkPlatformCollision(previousY) {
             continue;
         }
 
-        // 옆면 충돌: 실제 발판의 사각형 범위만 사용
+        // 발판 옆면 충돌
         const verticalOverlap =
             playerBottom > top &&
             playerTop < bottom;
@@ -276,7 +297,6 @@ function checkPlatformCollision(previousY) {
         }
     }
 }
-
 
 // ========================================
 // 플레이어 업데이트
@@ -306,7 +326,7 @@ function updatePlayer() {
     // 플랫폼 충돌
     checkPlatformCollision(previousY);
 
-    // 착지한 뒤에는 마찰을 크게 적용
+    // 발판 위에서는 빠르게 멈추고 공중에서는 천천히 감속
     if (player.grounded) {
         player.velocityX *= groundFriction;
     } else {
@@ -317,7 +337,7 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
-    // 최고 높이에 따라 점수 계산
+    // 최고 높이 점수
     const currentHeight = Math.max(
         0,
         Math.floor(580 - player.y)
@@ -327,26 +347,37 @@ function updatePlayer() {
         maxHeight = currentHeight;
         score = maxHeight;
 
-        document.getElementById("height").textContent = maxHeight;
-        document.getElementById("score").textContent = score;
+        const heightElement = document.getElementById("height");
+        const scoreElement = document.getElementById("score");
+
+        if (heightElement) {
+            heightElement.textContent = maxHeight;
+        }
+
+        if (scoreElement) {
+            scoreElement.textContent = score;
+        }
     }
 
-    // 카메라는 위로만 이동
-    const targetCameraY = player.y - 300;
+    // ====================================
+    // 카메라: 위아래 모두 캐릭터 따라가기
+    // ====================================
 
-    if (targetCameraY < cameraY) {
-        cameraY = targetCameraY;
-    }
+    const targetCameraY = player.y - cameraTargetOffset;
 
+    cameraY +=
+        (targetCameraY - cameraY) * cameraFollowSpeed;
+
+    // 카메라 이동에 맞춰 위아래 발판 유지
     createNewPlatforms();
     removeOldPlatforms();
 
-    // 화면 아래로 떨어지면 게임 종료
-    if (player.y > cameraY + 900) {
+    // 카메라가 따라가도 캐릭터가 화면 아래로
+    // 너무 멀리 떨어지면 게임 오버
+    if (player.y > cameraY + canvas.height + 250) {
         endGame();
     }
 }
-
 
 // ========================================
 // 배경
@@ -356,7 +387,6 @@ function drawBackground() {
     ctx.fillStyle = "#bde0fe";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
-
 
 // ========================================
 // 구름
@@ -384,7 +414,6 @@ function drawClouds() {
     }
 }
 
-
 // ========================================
 // 플랫폼 그리기
 // ========================================
@@ -393,7 +422,12 @@ function drawPlatforms() {
     for (const platform of platforms) {
         const screenY = platform.y - cameraY;
 
-        if (screenY < -50 || screenY > canvas.height + 50) continue;
+        if (
+            screenY < -50 ||
+            screenY > canvas.height + 50
+        ) {
+            continue;
+        }
 
         ctx.fillStyle = "#4caf50";
         ctx.fillRect(
@@ -413,7 +447,6 @@ function drawPlatforms() {
     }
 }
 
-
 // ========================================
 // 플레이어 그리기
 // ========================================
@@ -429,18 +462,19 @@ function drawPlayer() {
         player.height
     );
 
+    // 눈
     ctx.fillStyle = "white";
     ctx.fillRect(player.x + 7, screenY + 9, 5, 5);
     ctx.fillRect(player.x + 18, screenY + 9, 5, 5);
 
+    // 발
     ctx.fillStyle = "#1b5e20";
     ctx.fillRect(player.x + 2, screenY + 35, 10, 5);
     ctx.fillRect(player.x + 18, screenY + 35, 10, 5);
 }
 
-
 // ========================================
-// 점프 조준선
+// 조준선
 // ========================================
 
 function drawAim() {
@@ -463,19 +497,30 @@ function drawAim() {
     ctx.fill();
 }
 
-
 // ========================================
 // 게임 오버
 // ========================================
 
 function endGame() {
     gameOver = true;
+    dragging = false;
 
-    document.getElementById("finalHeight").textContent = maxHeight;
-    document.getElementById("finalScore").textContent = score;
-    document.getElementById("gameOver").style.display = "block";
+    const finalHeight = document.getElementById("finalHeight");
+    const finalScore = document.getElementById("finalScore");
+    const gameOverElement = document.getElementById("gameOver");
+
+    if (finalHeight) {
+        finalHeight.textContent = maxHeight;
+    }
+
+    if (finalScore) {
+        finalScore.textContent = score;
+    }
+
+    if (gameOverElement) {
+        gameOverElement.style.display = "block";
+    }
 }
-
 
 // ========================================
 // 다시 시작
@@ -497,11 +542,17 @@ function restartGame() {
     createStartingPlatforms();
     createNewPlatforms();
 
-    document.getElementById("height").textContent = "0";
-    document.getElementById("score").textContent = "0";
-    document.getElementById("gameOver").style.display = "none";
-}
+    const heightElement = document.getElementById("height");
+    const scoreElement = document.getElementById("score");
+    const gameOverElement = document.getElementById("gameOver");
 
+    if (heightElement) heightElement.textContent = "0";
+    if (scoreElement) scoreElement.textContent = "0";
+
+    if (gameOverElement) {
+        gameOverElement.style.display = "none";
+    }
+}
 
 // ========================================
 // 게임 루프
@@ -518,7 +569,6 @@ function gameLoop() {
 
     requestAnimationFrame(gameLoop);
 }
-
 
 // ========================================
 // 게임 시작
