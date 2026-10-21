@@ -642,9 +642,8 @@ with tab_submit:
             elif ok:
                 st.info(message)
             else:
+                # 오류 메시지가 바로 사라지지 않도록 여기서는 즉시 rerun하지 않는다.
                 st.error(message)
-
-            st.rerun()
 
 
 # ------------------------------------------
