@@ -160,7 +160,7 @@ def get_openai_client():
     if not api_key or not str(api_key).strip():
         return None
 
-    return OpenAI(api_key=str(api_key).strip())
+    return OpenAI(api_key=str(api_key).strip(), timeout=30.0, max_retries=0)
 
 
 # ==========================================
@@ -337,11 +337,17 @@ approve는 사진에서 활동과 관련된 충분한 시각적 증거를 찾았
         }
 
     except Exception as e:
-        # API 오류, 이미지 처리 오류, JSON 오류 모두 관리자 확인
+        # AI 요청이 실패해도 앱이 멈추지 않도록 관리자 확인 대기로 저장한다.
+        # 원인 유형을 인증 내역에 남겨 문제를 구분할 수 있게 한다.
+        error_type = type(e).__name__
         return {
             "decision": "review",
             "confidence": 0.0,
-            "reason": f"AI 분석을 완료하지 못했습니다. 관리자 확인이 필요합니다. ({type(e).__name__})",
+            "reason": (
+                f"AI 분석 요청을 완료하지 못했습니다 ({error_type}). "
+                "사진은 관리자 확인 대기로 접수됩니다. "
+                "잠시 후 다시 시도해도 반복되면 관리자에게 알려 주세요."
+            ),
         }
 
 
