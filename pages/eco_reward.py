@@ -76,6 +76,7 @@ def init_eco_tables():
                 user_id INTEGER NOT NULL,
                 username TEXT,
                 activity TEXT NOT NULL DEFAULT '기타 환경보호 활동',
+                activity_type TEXT NOT NULL DEFAULT '기타 환경보호 활동',
                 points INTEGER NOT NULL DEFAULT 0,
                 image_data BLOB,
                 mime_type TEXT,
@@ -106,6 +107,7 @@ def init_eco_tables():
             "user_id": "INTEGER NOT NULL DEFAULT 0",
             "username": "TEXT",
             "activity": "TEXT NOT NULL DEFAULT '기타 환경보호 활동'",
+            "activity_type": "TEXT NOT NULL DEFAULT '기타 환경보호 활동'",
             "points": "INTEGER NOT NULL DEFAULT 0",
             "image_data": "BLOB",
             "mime_type": "TEXT",
@@ -120,6 +122,19 @@ def init_eco_tables():
                 cur.execute(
                     f"ALTER TABLE eco_actions ADD COLUMN {column} {definition}"
                 )
+
+        # 기존 기록은 보존하면서 새 activity_type 열을 기존 activity 값으로 채운다.
+        cur.execute("PRAGMA table_info(eco_actions)")
+        updated_columns = {row[1] for row in cur.fetchall()}
+        if "activity" in updated_columns and "activity_type" in updated_columns:
+            cur.execute("""
+                UPDATE eco_actions
+                SET activity_type = activity
+                WHERE activity IS NOT NULL
+                  AND (activity_type IS NULL OR activity_type = ''
+                       OR activity_type = '기타 환경보호 활동')
+                  AND activity != '기타 환경보호 활동'
+            """)
 
         cur.execute("PRAGMA table_info(eco_reward_purchases)")
         purchase_columns = {row[1] for row in cur.fetchall()}
@@ -407,15 +422,16 @@ def submit_action(activity, uploaded_file):
             """
             INSERT INTO eco_actions
             (
-                user_id, username, activity, points,
+                user_id, username, activity, activity_type, points,
                 image_data, mime_type, status, created_at,
                 ai_decision, ai_reason, ai_confidence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
                 username,
+                activity,
                 activity,
                 points,
                 sqlite3.Binary(image_bytes),
@@ -642,8 +658,9 @@ with tab_submit:
             elif ok:
                 st.info(message)
             else:
-                # 오류 메시지가 바로 사라지지 않도록 여기서는 즉시 rerun하지 않는다.
                 st.error(message)
+
+            st.rerun()
 
 
 # ------------------------------------------
