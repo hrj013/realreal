@@ -54,6 +54,35 @@ function getPlayTime() {
         Math.round((Date.now() - gameStartTime) / 1000 * 10) / 10
     );
 }
+
+// ========================================
+// Streamlit 결과 전송
+// ========================================
+
+function sendResultToStreamlit() {
+    if (resultSent) return;
+
+    resultSent = true;
+
+    const result = {
+        run_id: runId,
+        score: Number(score) || 0,
+        max_height: Number(maxHeight) || 0,
+        play_time: getPlayTime(),
+        skin: currentSkin,
+        finished: true
+    };
+
+    window.parent.postMessage(
+        {
+            isStreamlitMessage: true,
+            type: "streamlit:setComponentValue",
+            value: result
+        },
+        "*"
+    );
+}
+
 // ========================================
 // 플레이어
 // ========================================
