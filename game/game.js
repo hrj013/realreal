@@ -25,6 +25,36 @@ const floorY = 750;
 const floorHeight = 40;
 
 // ========================================
+// Streamlit 연동 및 플레이 기록
+// ========================================
+
+let runId = createRunId();
+let gameStartTime = Date.now();
+let resultSent = false;
+let currentSkin = "basic";
+
+function createRunId() {
+    if (
+        typeof crypto !== "undefined" &&
+        typeof crypto.randomUUID === "function"
+    ) {
+        return crypto.randomUUID();
+    }
+
+    return (
+        Date.now().toString(36) +
+        "-" +
+        Math.random().toString(36).slice(2)
+    );
+}
+
+function getPlayTime() {
+    return Math.max(
+        0,
+        Math.round((Date.now() - gameStartTime) / 1000 * 10) / 10
+    );
+}
+// ========================================
 // 플레이어
 // ========================================
 
