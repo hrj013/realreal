@@ -602,13 +602,40 @@ function drawFloor() {
 }
 
 // ========================================
-// 플레이어 그리기
+// 스킨별 플레이어 그리기
 // ========================================
 
 function drawPlayer() {
     const screenY = player.y - cameraY;
 
-    ctx.fillStyle = "#2e7d32";
+    let bodyColor = "#2e7d32";
+    let footColor = "#1b5e20";
+
+    switch (currentSkin) {
+        case "leaf":
+            bodyColor = "#66bb6a";
+            footColor = "#2e7d32";
+            break;
+
+        case "ocean":
+            bodyColor = "#29b6f6";
+            footColor = "#0277bd";
+            break;
+
+        case "rainbow":
+            bodyColor = "#ab47bc";
+            footColor = "#7b1fa2";
+            break;
+
+        case "basic":
+        default:
+            bodyColor = "#2e7d32";
+            footColor = "#1b5e20";
+            break;
+    }
+
+    // 몸통
+    ctx.fillStyle = bodyColor;
     ctx.fillRect(
         player.x,
         screenY,
@@ -616,11 +643,13 @@ function drawPlayer() {
         player.height
     );
 
+    // 눈
     ctx.fillStyle = "white";
     ctx.fillRect(player.x + 7, screenY + 9, 5, 5);
     ctx.fillRect(player.x + 18, screenY + 9, 5, 5);
 
-    ctx.fillStyle = "#1b5e20";
+    // 발
+    ctx.fillStyle = footColor;
     ctx.fillRect(player.x + 2, screenY + 35, 10, 5);
     ctx.fillRect(player.x + 18, screenY + 35, 10, 5);
 }
