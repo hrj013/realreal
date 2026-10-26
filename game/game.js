@@ -740,8 +740,31 @@ function gameLoop() {
 }
 
 // ========================================
-// 게임 시작
+// Streamlit 컴포넌트 초기화
 // ========================================
+
+window.addEventListener("message", function(event) {
+    const message = event.data;
+
+    if (!message || message.type !== "streamlit:render") {
+        return;
+    }
+
+    const args = message.args || {};
+
+    if (args.skin) {
+        currentSkin = String(args.skin);
+    }
+});
+
+window.parent.postMessage(
+    {
+        isStreamlitMessage: true,
+        type: "streamlit:componentReady",
+        apiVersion: 1
+    },
+    "*"
+);
 
 createStartingPlatforms();
 gameLoop();
