@@ -679,8 +679,9 @@ function endGame() {
     if (gameOverElement) {
         gameOverElement.style.display = "block";
     }
-}
 
+    sendResultToStreamlit();
+}
 // ========================================
 // 다시 시작
 // ========================================
