@@ -699,6 +699,10 @@ function restartGame() {
     gameOver = false;
     dragging = false;
 
+    runId = createRunId();
+    gameStartTime = Date.now();
+    resultSent = false;
+
     createStartingPlatforms();
 
     const heightElement = document.getElementById("height");
