@@ -120,13 +120,30 @@ def home_page():
             st.session_state.playing = True
 
         if st.session_state.playing:
-            components.html(
-                load_game_html(),
-                height=720,
-                scrolling=False
-            )
+        game_result = eco_jump_game(
+        skin="basic",
+        key="eco_jump_game",
+        default=None,
+         )
 
-        st.write("")
+         if (
+           isinstance(game_result, dict)
+           and game_result.get("finished")
+         ):
+           st.success("게임이 종료되었습니다!")
+
+           st.write(
+              f"최고 높이: {game_result.get('max_height', 0)} m"
+            )
+           st.write(
+              f"점수: {game_result.get('score', 0)}"
+            )
+           st.write(
+             f"플레이 시간: {game_result.get('play_time', 0)}초"
+            )
+                )
+
+           st.write("")
 
         if st.button("로그아웃"):
             st.session_state.logged_in = False
