@@ -244,13 +244,19 @@ function createNewPlatforms() {
     }
 }
 
+
 function removeOldPlatforms() {
+    // 화면 아래쪽으로 충분히 멀어진 발판만 제거한다.
+    // 위쪽 발판을 지우면 앞으로 올라갈 발판이 사라질 수 있다.
+    const removeBelowY = cameraY + canvas.height + 400;
+
     for (let i = platforms.length - 1; i >= 0; i--) {
-        if (platforms[i].y < cameraY - 1100) {
+        if (platforms[i].y > removeBelowY) {
             platforms.splice(i, 1);
         }
     }
 }
+
 
 // ========================================
 // 점프
