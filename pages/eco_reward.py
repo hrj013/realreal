@@ -84,7 +84,8 @@ def init_eco_tables():
                 created_at TEXT NOT NULL DEFAULT '',
                 ai_decision TEXT DEFAULT 'review',
                 ai_reason TEXT DEFAULT '',
-                ai_confidence REAL DEFAULT 0
+                ai_confidence REAL DEFAULT 0,
+                rejection_reason TEXT DEFAULT ''
             )
         """)
 
@@ -116,6 +117,7 @@ def init_eco_tables():
             "ai_decision": "TEXT DEFAULT 'review'",
             "ai_reason": "TEXT DEFAULT ''",
             "ai_confidence": "REAL DEFAULT 0",
+            "rejection_reason": "TEXT DEFAULT ''",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -186,7 +188,7 @@ def analyze_photo(image_bytes, mime_type, activity):
     """
     반환 형식:
     {
-        "decision": "approve" 또는 "review",
+        "decision": "approve", "fail" 또는 "review",
         "confidence": 0.0 ~ 1.0,
         "reason": "판정 이유"
     }
@@ -278,15 +280,16 @@ def analyze_photo(image_bytes, mime_type, activity):
 7. 사진에서 실제 행동 전체가 보이지 않아도 관련 증거가 충분할 수 있습니다.
 8. 반대로 활동과 전혀 관련 없는 사진이라면 자동 승인하지 마세요.
 9. 사진만으로 실제 행동 여부를 확실히 증명할 수 없다는 점을 고려하세요.
-10. 증거가 일부만 보이거나 판단이 어려우면 reject가 아니라 review로 판단하세요.
+10. 증거가 일부만 보이거나 판단이 어려우면 fail이 아니라 review로 판단하세요.
 11. 자동 승인은 사진이 해당 활동과 명확하게 관련되어 있을 때만 하세요.
 12. 사진 분석에 실패하거나 내용이 불명확하면 review로 판단하세요.
+13. fail은 사진이 해당 활동과 명백히 무관한 경우에만 선택하세요.
 
 다음 JSON 형식으로만 응답하세요.
 다른 설명이나 마크다운을 추가하지 마세요.
 
 {{
-  "decision": "approve 또는 review",
+  "decision": "approve, fail 또는 review",
   "confidence": 0.0,
   "reason": "한국어로 작성한 짧은 판단 근거"
 }}
@@ -295,6 +298,7 @@ confidence는 사진이 해당 활동의 인증 기준을 충족한다고 판단
 0.0에서 1.0 사이의 숫자로 작성하세요.
 
 approve는 사진에서 활동과 관련된 충분한 시각적 증거를 찾았을 때만 선택하세요.
+fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
 불확실하면 review를 선택하세요.
 """
 
@@ -337,12 +341,12 @@ approve는 사진에서 활동과 관련된 충분한 시각적 증거를 찾았
 
         confidence = max(0.0, min(1.0, confidence))
 
-        # AI가 임의로 reject를 반환해도 자동 거절하지 않는다.
-        if decision not in ("approve", "review"):
+        # 예상하지 못한 판단값은 관리자 검토로 보낸다.
+        if decision not in ("approve", "fail", "review"):
             decision = "review"
 
-        # 신뢰도가 충분하지 않으면 관리자 확인으로 전환
-        if decision != "approve" or confidence < AUTO_APPROVE_CONFIDENCE:
+        # 성공/실패 판단의 신뢰도가 낮으면 자동 확정하지 않고 검토 대기로 전환
+        if decision in ("approve", "fail") and confidence < AUTO_APPROVE_CONFIDENCE:
             decision = "review"
 
         return {
@@ -409,11 +413,11 @@ def submit_action(activity, uploaded_file):
         with st.spinner("AI가 환경보호 사진을 분석하고 있어요..."):
             result = analyze_photo(image_bytes, mime_type, activity)
 
-        status = (
-            "approved"
-            if result["decision"] == "approve"
-            else "pending"
-        )
+        status = {
+            "approve": "approved",
+            "fail": "failed",
+            "review": "pending",
+        }.get(result["decision"], "pending")
 
         points = ACTIVITIES[activity]
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -459,13 +463,20 @@ def submit_action(activity, uploaded_file):
 
         if status == "approved":
             return True, (
-                f"AI 인증 성공! 환경보호 포인트 {points}점을 받았어요. "
+                f"✅ AI 인증 성공! 환경보호 포인트 {points}점을 즉시 받았어요. "
+                f"판단 근거: {result['reason']}"
+            )
+
+        if status == "failed":
+            return True, (
+                "❌ AI 인증 실패: 사진에서 선택한 활동과 관련된 증거를 "
+                "확인하지 못했어요. 포인트는 지급되지 않았어요. "
                 f"판단 근거: {result['reason']}"
             )
 
         return True, (
-            "사진을 접수했어요. 사진이 애매하거나 AI가 확신하지 못해 "
-            "관리자 확인 대기 중이에요. 자동으로 거절된 것은 아니에요. "
+            "⏳ 인증 사진을 접수했어요. AI가 확실하게 판단하지 못해 "
+            "관리자 검토 대기 중이에요. 아직 반려된 것은 아니에요. "
             f"판단 근거: {result['reason']}"
         )
 
@@ -481,7 +492,7 @@ def submit_action(activity, uploaded_file):
 # 관리자 검토
 # ==========================================
 
-def review_action(action_id, approve):
+def review_action(action_id, approve, rejection_reason=""):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -506,13 +517,17 @@ def review_action(action_id, approve):
 
         new_status = "approved" if approve else "rejected"
 
+        reason = "" if approve else rejection_reason.strip()
+        if not approve and not reason:
+            return False, "반려 사유를 입력해 주세요."
+
         cur.execute(
             """
             UPDATE eco_actions
-            SET status = ?
+            SET status = ?, rejection_reason = ?
             WHERE id = ? AND status = 'pending'
             """,
-            (new_status, action_id),
+            (new_status, reason, action_id),
         )
 
         if cur.rowcount != 1:
@@ -534,7 +549,7 @@ def review_action(action_id, approve):
         if approve:
             return True, f"인증 승인 완료! {points}점을 지급했어요."
 
-        return True, "인증을 거절 처리했어요."
+        return True, f"인증을 반려했어요. 반려 사유: {reason}"
 
     except Exception as e:
         conn.rollback()
@@ -655,6 +670,8 @@ with tab_submit:
 
             if ok and "AI 인증 성공" in message:
                 st.success(message)
+            elif ok and "AI 인증 실패" in message:
+                st.error(message)
             elif ok:
                 st.info(message)
             else:
@@ -676,7 +693,7 @@ with tab_history:
     cur.execute(
         """
         SELECT id, activity, points, status, created_at,
-               ai_decision, ai_reason, ai_confidence
+               ai_decision, ai_reason, ai_confidence, rejection_reason
         FROM eco_actions
         WHERE user_id = ?
         ORDER BY id DESC
@@ -701,12 +718,14 @@ with tab_history:
                 ai_decision,
                 ai_reason,
                 ai_confidence,
+                rejection_reason,
             ) = record
 
             label = {
-                "approved": "✅ 승인",
-                "pending": "⏳ 관리자 확인 대기",
-                "rejected": "❌ 거절",
+                "approved": "✅ 인증 성공",
+                "failed": "❌ 인증 실패",
+                "pending": "⏳ 관리자 검토 대기",
+                "rejected": "📋 인증 반려",
             }.get(status, status)
 
             with st.expander(
@@ -718,6 +737,15 @@ with tab_history:
                     f"AI 신뢰도: {float(ai_confidence or 0):.0%}"
                 )
                 st.write(f"판단 근거: {ai_reason or '기록 없음'}")
+                if status == "approved":
+                    st.success(f"인증 성공! {points}P가 지급되었어요.")
+                elif status == "failed":
+                    st.error("AI 인증 실패: 포인트가 지급되지 않았어요.")
+                elif status == "pending":
+                    st.info("관리자 검토를 기다리고 있어요.")
+                elif status == "rejected":
+                    st.warning("관리자가 인증을 반려했어요.")
+                    st.write(f"반려 사유: {rejection_reason or '사유가 입력되지 않았어요.'}")
 
 
 # ------------------------------------------
@@ -854,6 +882,12 @@ with tab_admin:
                                 use_container_width=True,
                             )
 
+                        reject_reason = st.text_area(
+                            "반려 사유 (반려할 때 필수)",
+                            key=f"reject_reason_{action_id}",
+                            placeholder="예: 사진에서 선택한 활동을 확인하기 어려워요.",
+                        )
+
                         col1, col2 = st.columns(2)
 
                         with col1:
@@ -871,11 +905,13 @@ with tab_admin:
 
                         with col2:
                             if st.button(
-                                "거절",
+                                "인증 반려",
                                 key=f"reject_{action_id}",
                                 use_container_width=True,
                             ):
-                                ok, message = review_action(action_id, False)
+                                ok, message = review_action(
+                                    action_id, False, reject_reason
+                                )
                                 if ok:
                                     st.warning(message)
                                 else:
