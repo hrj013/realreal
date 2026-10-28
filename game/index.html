@@ -1,84 +1,59 @@
+
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <title>Eco Jump</title>
-
-    <link rel="stylesheet"
-          href="game.css">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eco Jump</title>
+  <link rel="stylesheet" href="game.css">
 </head>
-
-
 <body>
-
-<div id="game-container">
-
-
-    <!-- 상단 정보 -->
-
+  <div id="game-container">
     <div id="hud">
-
-        <div>
-            🌱 ECO JUMP
-        </div>
-
-        <div>
-            HEIGHT:
-            <span id="height">0</span> m
-        </div>
-
-        <div>
-            SCORE:
-            <span id="score">0</span>
-        </div>
-
+      <div>🌱 ECO JUMP</div>
+      <div>HEIGHT: <span id="height">0</span> m</div>
+      <div>SCORE: <span id="score">0</span></div>
     </div>
-
-
-    <!-- 게임 화면 -->
 
     <canvas id="gameCanvas"></canvas>
 
-
-    <!-- 게임 오버 -->
-
     <div id="gameOver">
-
-        <h1>GAME OVER</h1>
-
-        <p>
-            최고 높이:
-            <strong>
-                <span id="finalHeight">0</span>m
-            </strong>
-        </p>
-
-        <p>
-            점수:
-            <strong>
-                <span id="finalScore">0</span>
-            </strong>
-        </p>
-
-        <button onclick="restartGame()">
-            다시 하기
-        </button>
-
+      <h1>GAME OVER</h1>
+      <p>최고 높이: <strong><span id="finalHeight">0</span>m</strong></p>
+      <p>점수: <strong><span id="finalScore">0</span></strong></p>
+      <button onclick="restartGame()">다시 하기</button>
     </div>
+  </div>
 
+  <script>
+    window.ecoJumpSkin = "basic";
 
-</div>
+    window.addEventListener("message", function(event) {
+      const message = event.data;
 
+      if (!message || message.type !== "streamlit:render") {
+        return;
+      }
 
-<script src="game.js"></script>
+      const args = message.args || {};
+      window.ecoJumpSkin = args.skin || "basic";
+    });
 
+    // Streamlit에 컴포넌트 준비 완료 알림
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:componentReady",
+      apiVersion: 1
+    }, "*");
+
+    // 게임 화면 높이 지정
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:setFrameHeight",
+      height: 740
+    }, "*");
+  </script>
+
+  <script src="game.js"></script>
 </body>
-
 </html>
