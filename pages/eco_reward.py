@@ -618,6 +618,19 @@ def purchase_reward(reward_name):
 st.title("🌱 Eco Jump 환경보호 보상")
 st.caption("환경을 보호하고 포인트를 모아 보상을 받아 보세요!")
 
+# st.rerun() 이후에도 작업 결과 메시지가 사라지지 않도록 세션에 보관한다.
+_flash_message = st.session_state.pop("eco_flash_message", None)
+if _flash_message:
+    _flash_type, _flash_text = _flash_message
+    if _flash_type == "success":
+        st.success(_flash_text)
+    elif _flash_type == "error":
+        st.error(_flash_text)
+    elif _flash_type == "warning":
+        st.warning(_flash_text)
+    else:
+        st.info(_flash_text)
+
 conn = get_connection()
 cur = conn.cursor()
 cur.execute(
@@ -669,14 +682,15 @@ with tab_submit:
             ok, message = submit_action(activity, uploaded_file)
 
             if ok and "AI 인증 성공" in message:
-                st.success(message)
+                flash_type = "success"
             elif ok and "AI 인증 실패" in message:
-                st.error(message)
+                flash_type = "error"
             elif ok:
-                st.info(message)
+                flash_type = "info"
             else:
-                st.error(message)
+                flash_type = "error"
 
+            st.session_state["eco_flash_message"] = (flash_type, message)
             st.rerun()
 
 
@@ -768,11 +782,10 @@ with tab_shop:
             ):
                 ok, message = purchase_reward(reward_name)
 
-                if ok:
-                    st.success(message)
-                else:
-                    st.error(message)
-
+                st.session_state["eco_flash_message"] = (
+                    "success" if ok else "error",
+                    message,
+                )
                 st.rerun()
 
     st.divider()
@@ -897,10 +910,10 @@ with tab_admin:
                                 use_container_width=True,
                             ):
                                 ok, message = review_action(action_id, True)
-                                if ok:
-                                    st.success(message)
-                                else:
-                                    st.error(message)
+                                st.session_state["eco_flash_message"] = (
+                                    "success" if ok else "error",
+                                    message,
+                                )
                                 st.rerun()
 
                         with col2:
@@ -912,10 +925,10 @@ with tab_admin:
                                 ok, message = review_action(
                                     action_id, False, reject_reason
                                 )
-                                if ok:
-                                    st.warning(message)
-                                else:
-                                    st.error(message)
+                                st.session_state["eco_flash_message"] = (
+                                    "warning" if ok else "error",
+                                    message,
+                                )
                                 st.rerun()
         elif entered_password:
             st.error("관리자 비밀번호가 올바르지 않아요.")
