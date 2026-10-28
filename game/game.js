@@ -216,18 +216,22 @@ function getPlatformX(width, level) {
 // 위쪽 플랫폼 생성
 // ========================================
 
+
 function createNewPlatforms() {
-    while (highestPlatformY > cameraY - 1000) {
+    // 카메라 위쪽으로 충분한 발판을 계속 생성한다.
+    const generateUntilY = cameraY - 1200;
+
+    while (highestPlatformY > generateUntilY) {
         const level = getDifficulty();
 
-        const gapMin = 90 + level * 8;
-        const gapRange = Math.max(25, 50 - level * 3);
+        const gapMin = 90 + level * 5;
+        const gapRange = Math.max(25, 55 - level * 3);
         const gapY = gapMin + Math.random() * gapRange;
 
         highestPlatformY -= gapY;
 
-        const widthMax = Math.max(135, 190 - level * 12);
-        const widthMin = Math.max(90, 120 - level * 6);
+        const widthMax = Math.max(135, 190 - level * 10);
+        const widthMin = Math.max(100, 125 - level * 5);
 
         const width =
             widthMin + Math.random() * (widthMax - widthMin);
@@ -243,6 +247,7 @@ function createNewPlatforms() {
         });
     }
 }
+
 
 
 function removeOldPlatforms() {
