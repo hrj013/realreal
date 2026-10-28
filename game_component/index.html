@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eco Jump</title>
   <link rel="stylesheet" href="game.css">
 </head>
 <body>
@@ -27,18 +28,8 @@
   <script>
     window.ecoJumpSkin = "basic";
 
-    function sendGameResult(result) {
-      window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: "streamlit:setComponentValue",
-        value: result,
-        dataType: "json"
-      }, "*");
-    }
-
     window.addEventListener("message", function(event) {
       const message = event.data;
-
       if (!message || !message.type) return;
 
       if (message.type === "streamlit:render") {
