@@ -640,6 +640,16 @@ def show_status_popup(kind, title, message):
     st.markdown(
         f"""
         <style>
+        #eco-status-dismiss {{
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }}
+        #eco-status-dismiss:checked + .eco-status-overlay {{
+            display: none !important;
+        }}
         .eco-status-overlay {{
             position: fixed;
             inset: 0;
@@ -678,11 +688,10 @@ def show_status_popup(kind, title, message):
             color: #333;
             font-size: 30px;
             font-weight: 500;
-            line-height: 1;
+            line-height: 38px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: block;
+            text-align: center;
             padding: 0;
         }}
         .eco-status-close:hover {{
@@ -704,11 +713,11 @@ def show_status_popup(kind, title, message):
             overflow-wrap: anywhere;
         }}
         </style>
+        <input type="checkbox" id="eco-status-dismiss" aria-label="안내창 닫기">
         <div class="eco-status-overlay" id="eco-status-overlay">
           <div class="eco-status-card">
-            <button type="button" class="eco-status-close"
-                    aria-label="안내창 닫기" title="닫기"
-                    onclick="this.closest('.eco-status-overlay').remove();">×</button>
+            <label for="eco-status-dismiss" class="eco-status-close"
+                   aria-label="안내창 닫기" title="닫기">×</label>
             <div style="font-size: clamp(42px, 5vw, 58px);">{emoji}</div>
             <p class="eco-status-title">{safe_title}</p>
             <p class="eco-status-message">{safe_message}</p>
