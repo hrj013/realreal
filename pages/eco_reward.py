@@ -4,6 +4,7 @@ import sqlite3
 import json
 import base64
 import re
+from google import genai
 from datetime import datetime
 from openai import OpenAI
 
@@ -162,6 +163,16 @@ def init_eco_tables():
 
 init_eco_tables()
 
+# ==========================================
+# 제미나이 연결
+# ==========================================
+def get_gemini_client():
+    api_key = st.secrets.get("GEMINI_API_KEY")
+
+    if not api_key:
+        return None
+
+    return genai.Client(api_key=api_key)
 
 # ==========================================
 # OpenAI 연결
