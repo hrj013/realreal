@@ -4,6 +4,7 @@ import sqlite3
 import json
 import base64
 import re
+import html
 from google import genai
 from datetime import datetime
 from openai import OpenAI
@@ -119,6 +120,7 @@ def init_eco_tables():
             "ai_reason": "TEXT DEFAULT ''",
             "ai_confidence": "REAL DEFAULT 0",
             "rejection_reason": "TEXT DEFAULT ''",
+            "status_notice_seen": "INTEGER NOT NULL DEFAULT 1",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -433,9 +435,9 @@ def submit_action(activity, uploaded_file):
             (
                 user_id, username, activity, activity_type, points,
                 image_data, mime_type, status, created_at,
-                ai_decision, ai_reason, ai_confidence
+                ai_decision, ai_reason, ai_confidence, status_notice_seen
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -450,6 +452,7 @@ def submit_action(activity, uploaded_file):
                 result["decision"],
                 result["reason"],
                 result["confidence"],
+                1,
             ),
         )
 
@@ -529,7 +532,7 @@ def review_action(action_id, approve, rejection_reason=""):
         cur.execute(
             """
             UPDATE eco_actions
-            SET status = ?, rejection_reason = ?
+            SET status = ?, rejection_reason = ?, status_notice_seen = 0
             WHERE id = ? AND status = 'pending'
             """,
             (new_status, reason, action_id),
@@ -624,17 +627,126 @@ st.title("🌱 Eco Jump 환경보호 보상")
 st.caption("환경을 보호하고 포인트를 모아 보상을 받아 보세요!")
 
 # st.rerun() 이후에도 작업 결과 메시지가 사라지지 않도록 세션에 보관한다.
+def show_status_popup(kind, title, message):
+    """화면 중앙에 크게 표시되는 인증 결과 안내창."""
+    colors = {
+        "success": ("#16803c", "#e8f7ed", "🎉"),
+        "error": ("#c62828", "#fdecec", "❌"),
+        "warning": ("#a86400", "#fff4dc", "📋"),
+        "info": ("#1769aa", "#eaf4ff", "⏳"),
+    }
+    accent, background, emoji = colors.get(kind, colors["info"])
+    safe_title = html.escape(str(title))
+    safe_message = html.escape(str(message))
+    st.markdown(
+        f"""
+        <style>
+        .eco-status-overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            background: rgba(0, 0, 0, 0.48);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .eco-status-card {{
+            width: min(620px, 82vw);
+            min-height: 220px;
+            box-sizing: border-box;
+            background: {background};
+            border: 4px solid {accent};
+            border-radius: 28px;
+            padding: 38px 34px;
+            text-align: center;
+            box-shadow: 0 16px 55px rgba(0,0,0,.28);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 18px;
+        }}
+        .eco-status-title {{
+            color: {accent};
+            font-size: clamp(30px, 4vw, 46px);
+            line-height: 1.2;
+            font-weight: 900;
+            margin: 0;
+        }}
+        .eco-status-message {{
+            color: #202124;
+            font-size: clamp(19px, 2.2vw, 25px);
+            line-height: 1.5;
+            font-weight: 700;
+            margin: 0;
+            overflow-wrap: anywhere;
+        }}
+        </style>
+        <div class="eco-status-overlay">
+          <div class="eco-status-card">
+            <div style="font-size: clamp(42px, 5vw, 58px);">{emoji}</div>
+            <p class="eco-status-title">{safe_title}</p>
+            <p class="eco-status-message">{safe_message}</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 _flash_message = st.session_state.pop("eco_flash_message", None)
 if _flash_message:
     _flash_type, _flash_text = _flash_message
     if _flash_type == "success":
-        st.success(_flash_text)
+        show_status_popup("success", "인증 성공!", _flash_text)
     elif _flash_type == "error":
-        st.error(_flash_text)
+        show_status_popup("error", "인증 실패", _flash_text)
     elif _flash_type == "warning":
-        st.warning(_flash_text)
+        show_status_popup("warning", "인증 반려", _flash_text)
     else:
-        st.info(_flash_text)
+        show_status_popup("info", "관리자 검토 대기", _flash_text)
+
+# 관리자가 나중에 승인/반려한 결과는 해당 사용자가 페이지에 들어왔을 때 한 번 크게 알린다.
+conn = get_connection()
+cur = conn.cursor()
+cur.execute(
+    """
+    SELECT id, status, points, rejection_reason
+    FROM eco_actions
+    WHERE user_id = ?
+      AND status_notice_seen = 0
+      AND status IN ('approved', 'failed', 'rejected')
+    ORDER BY id DESC
+    LIMIT 1
+    """,
+    (user_id,),
+)
+_unseen_notice = cur.fetchone()
+if _unseen_notice:
+    notice_id, notice_status, notice_points, notice_reason = _unseen_notice
+    cur.execute(
+        "UPDATE eco_actions SET status_notice_seen = 1 WHERE id = ?",
+        (notice_id,),
+    )
+    conn.commit()
+conn.close()
+
+if _unseen_notice:
+    if notice_status == "approved":
+        show_status_popup(
+            "success", "인증 성공!",
+            f"관리자 검토가 완료되어 {notice_points}P가 지급되었어요."
+        )
+    elif notice_status == "failed":
+        show_status_popup(
+            "error", "인증 실패",
+            "사진에서 선택한 활동과 관련된 증거를 확인하지 못했어요. 포인트는 지급되지 않았어요."
+        )
+    else:
+        show_status_popup(
+            "warning", "인증 반려",
+            f"관리자가 인증을 반려했어요. 사유: {notice_reason or '사유가 입력되지 않았어요.'}"
+        )
 
 conn = get_connection()
 cur = conn.cursor()
