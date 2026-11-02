@@ -679,9 +679,41 @@ def show_status_popup(kind, title, message):
             margin: 0;
             overflow-wrap: anywhere;
         }}
+        .eco-status-close {{
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            width: 42px;
+            height: 42px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.08);
+            color: #333;
+            font-size: 30px;
+            line-height: 1;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .eco-status-close:hover {{
+            background: rgba(0, 0, 0, 0.16);
+        }}
+        .eco-status-close:focus-visible {{
+            outline: 3px solid {accent};
+            outline-offset: 3px;
+        }}
         </style>
         <div class="eco-status-overlay">
-          <div class="eco-status-card">
+          <div class="eco-status-card" style="position: relative;">
+            <button
+              class="eco-status-close"
+              type="button"
+              aria-label="안내창 닫기"
+              title="닫기"
+              onclick="this.closest('.eco-status-overlay').remove();"
+            >×</button>
             <div style="font-size: clamp(42px, 5vw, 58px);">{emoji}</div>
             <p class="eco-status-title">{safe_title}</p>
             <p class="eco-status-message">{safe_message}</p>
