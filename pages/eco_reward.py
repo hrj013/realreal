@@ -633,7 +633,13 @@ st.caption("환경을 보호하고 포인트를 모아 보상을 받아 보세�
 
 # st.rerun() 이후에도 작업 결과 메시지가 사라지지 않도록 세션에 보관한다.
 def show_status_popup(kind, title, message):
-    """화면 중앙에 크게 표시되는 인증 결과 안내창."""
+    """화면 중앙에 표시되는 결과 안내창. 우측 상단 X로 닫을 수 있다."""
+    # Streamlit 버튼으로 닫기 동작을 처리해 HTML 표시만으로 끝나지 않도록 한다.
+    _close_spacer, _close_column = st.columns([12, 1])
+    with _close_column:
+        if st.button("✕", key=f"close_eco_status_{kind}", help="메시지 닫기"):
+            st.rerun()
+
     colors = {
         "success": ("#16803c", "#e8f7ed", "🎉"),
         "error": ("#c62828", "#fdecec", "❌"),
@@ -657,6 +663,7 @@ def show_status_popup(kind, title, message):
             padding: 20px;
         }}
         .eco-status-card {{
+            position: relative;
             width: min(620px, 82vw);
             min-height: 220px;
             box-sizing: border-box;
