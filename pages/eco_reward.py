@@ -7,7 +7,6 @@ import re
 import html
 from google import genai
 from datetime import datetime
-from openai import OpenAI
 
 from database.db import (
     get_connection,
@@ -180,23 +179,6 @@ def get_gemini_client():
         return None
 
     return genai.Client(api_key=api_key)
-
-# ==========================================
-# OpenAI 연결
-# ==========================================
-
-def get_openai_client():
-    """API 키는 Streamlit Secrets에서만 읽는다."""
-    try:
-        api_key = st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        return None
-
-    if not api_key or not str(api_key).strip():
-        return None
-
-    return OpenAI(api_key=str(api_key).strip(), timeout=30.0, max_retries=0)
-
 
 # ==========================================
 # AI 사진 분석
