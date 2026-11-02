@@ -317,7 +317,7 @@ fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
 
     try:
         response = client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=AI_MODEL,
             contents=[
                 prompt,
                 genai.types.Part.from_bytes(
@@ -370,9 +370,8 @@ fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
             "decision": "review",
             "confidence": 0.0,
             "reason": (
-                f"AI 분석 요청을 완료하지 못했습니다 ({error_type}). "
-                "사진은 관리자 확인 대기로 접수됩니다. "
-                "잠시 후 다시 시도해도 반복되면 관리자에게 알려 주세요."
+                f"Gemini API 오류 ({error_type}): {str(e)[:400]}. "
+                "사진은 관리자 확인 대기로 접수됩니다."
             ),
         }
 
