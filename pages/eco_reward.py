@@ -16,7 +16,7 @@ from database.db import get_connection
 # 기본 설정
 # ==========================================
 
-GEMINI_MODEL = "gemini-2.5-flash"
+AI_MODEL = "gemini-3.8-flash"
 AUTO_APPROVE_CONFIDENCE = 0.65
 
 ACTIVITIES = {
