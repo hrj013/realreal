@@ -626,7 +626,7 @@ st.caption("환경을 보호하고 포인트를 모아 보상을 받아 보세�
 
 # st.rerun() 이후에도 작업 결과 메시지가 사라지지 않도록 세션에 보관한다.
 def show_status_popup(kind, title, message):
-    """화면 중앙에 크게 표시되는 인증 결과 안내창."""
+    """화면 중앙 결과 안내창. HTML X 버튼을 누르면 브라우저에서 즉시 닫는다."""
     colors = {
         "success": ("#16803c", "#e8f7ed", "🎉"),
         "error": ("#c62828", "#fdecec", "❌"),
@@ -636,6 +636,7 @@ def show_status_popup(kind, title, message):
     accent, background, emoji = colors.get(kind, colors["info"])
     safe_title = html.escape(str(title))
     safe_message = html.escape(str(message))
+
     st.markdown(
         f"""
         <style>
@@ -650,19 +651,42 @@ def show_status_popup(kind, title, message):
             padding: 20px;
         }}
         .eco-status-card {{
+            position: relative;
             width: min(620px, 82vw);
             min-height: 220px;
             box-sizing: border-box;
             background: {background};
             border: 4px solid {accent};
             border-radius: 28px;
-            padding: 38px 34px;
+            padding: 48px 34px 38px;
             text-align: center;
             box-shadow: 0 16px 55px rgba(0,0,0,.28);
             display: flex;
             flex-direction: column;
             justify-content: center;
             gap: 18px;
+        }}
+        .eco-status-close {{
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            width: 38px;
+            height: 38px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.09);
+            color: #333;
+            font-size: 30px;
+            font-weight: 500;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }}
+        .eco-status-close:hover {{
+            background: rgba(0, 0, 0, 0.18);
         }}
         .eco-status-title {{
             color: {accent};
@@ -679,41 +703,12 @@ def show_status_popup(kind, title, message):
             margin: 0;
             overflow-wrap: anywhere;
         }}
-        .eco-status-close {{
-            position: absolute;
-            top: 12px;
-            right: 16px;
-            width: 42px;
-            height: 42px;
-            border: 0;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.08);
-            color: #333;
-            font-size: 30px;
-            line-height: 1;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }}
-        .eco-status-close:hover {{
-            background: rgba(0, 0, 0, 0.16);
-        }}
-        .eco-status-close:focus-visible {{
-            outline: 3px solid {accent};
-            outline-offset: 3px;
-        }}
         </style>
-        <div class="eco-status-overlay">
-          <div class="eco-status-card" style="position: relative;">
-            <button
-              class="eco-status-close"
-              type="button"
-              aria-label="안내창 닫기"
-              title="닫기"
-              onclick="this.closest('.eco-status-overlay').remove();"
-            >×</button>
+        <div class="eco-status-overlay" id="eco-status-overlay">
+          <div class="eco-status-card">
+            <button type="button" class="eco-status-close"
+                    aria-label="안내창 닫기" title="닫기"
+                    onclick="this.closest('.eco-status-overlay').remove();">×</button>
             <div style="font-size: clamp(42px, 5vw, 58px);">{emoji}</div>
             <p class="eco-status-title">{safe_title}</p>
             <p class="eco-status-message">{safe_message}</p>
@@ -735,6 +730,7 @@ if _flash_message:
         show_status_popup("warning", "인증 반려", _flash_text)
     else:
         show_status_popup("info", "관리자 검토 대기", _flash_text)
+
 
 # 관리자가 나중에 승인/반려한 결과는 해당 사용자가 페이지에 들어왔을 때 한 번 크게 알린다.
 conn = get_connection()
