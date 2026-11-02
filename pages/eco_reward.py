@@ -102,6 +102,19 @@ def init_eco_tables():
             )
         """)
 
+        # 관리자가 직접 지급한 포인트 이력은 활동 인증 기록과 별도로 보관한다.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS eco_manual_point_grants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                points INTEGER NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',
+                granted_by TEXT NOT NULL DEFAULT '',
+                granted_at TEXT NOT NULL DEFAULT ''
+            )
+        """)
+
         # 기존 테이블은 CREATE TABLE IF NOT EXISTS로 변경되지 않으므로
         # 실제 열 목록을 읽고 빠진 열을 안전하게 추가한다.
         cur.execute("PRAGMA table_info(eco_actions)")
@@ -566,6 +579,76 @@ def review_action(action_id, approve, rejection_reason=""):
 
 
 # ==========================================
+# 관리자 직접 포인트 지급
+# ==========================================
+
+def grant_manual_points(target_user_id, points, reason, granted_by):
+    """활동 인증과 별개로 관리자가 특정 사용자에게 포인트를 지급한다."""
+    try:
+        points = int(points)
+    except (TypeError, ValueError):
+        return False, "지급할 포인트는 숫자로 입력해 주세요."
+
+    reason = str(reason or "").strip()
+    if points <= 0:
+        return False, "지급 포인트는 1 이상이어야 해요."
+    if points > 1000000:
+        return False, "한 번에 지급할 수 있는 포인트는 최대 1,000,000P예요."
+    if not reason:
+        return False, "지급 사유를 입력해 주세요."
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT username FROM users WHERE id = ?",
+            (target_user_id,),
+        )
+        target = cur.fetchone()
+        if not target:
+            return False, "선택한 사용자를 찾을 수 없어요."
+
+        target_username = target[0] or "알 수 없음"
+        granted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        cur.execute(
+            """
+            UPDATE users
+            SET green_point = COALESCE(green_point, 0) + ?
+            WHERE id = ?
+            """,
+            (points, target_user_id),
+        )
+        if cur.rowcount != 1:
+            conn.rollback()
+            return False, "포인트 지급에 실패했어요. 사용자를 다시 확인해 주세요."
+
+        cur.execute(
+            """
+            INSERT INTO eco_manual_point_grants
+                (user_id, username, points, reason, granted_by, granted_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                target_user_id,
+                target_username,
+                points,
+                reason,
+                str(granted_by or "관리자"),
+                granted_at,
+            ),
+        )
+
+        conn.commit()
+        return True, f"{target_username}님에게 {points:,}P를 지급했어요."
+    except Exception as e:
+        conn.rollback()
+        return False, f"포인트 지급 중 오류가 발생했어요: {e}"
+    finally:
+        conn.close()
+
+
+# ==========================================
 # 보상 상점
 # ==========================================
 
@@ -990,6 +1073,92 @@ with tab_admin:
 
         if entered_password == admin_password:
             st.success("관리자 인증 완료")
+
+            # 관리자 직접 포인트 지급
+            st.divider()
+            st.subheader("🎁 특정 사용자에게 포인트 직접 지급")
+            st.caption("환경보호 활동 인증 없이 포인트를 지급합니다. 지급 내역은 인증 기록과 별도로 저장돼요.")
+
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, username FROM users ORDER BY username COLLATE NOCASE"
+            )
+            all_users = cur.fetchall()
+            conn.close()
+
+            if not all_users:
+                st.info("포인트를 지급할 사용자가 없어요.")
+            else:
+                user_labels = {
+                    f"{name} (ID: {uid})": uid
+                    for uid, name in all_users
+                }
+                selected_user_label = st.selectbox(
+                    "지급 대상 사용자",
+                    list(user_labels.keys()),
+                    key="eco_manual_grant_user",
+                )
+                grant_points_value = st.number_input(
+                    "지급할 포인트",
+                    min_value=1,
+                    max_value=1000000,
+                    value=100,
+                    step=10,
+                    key="eco_manual_grant_points",
+                )
+                grant_reason_value = st.text_input(
+                    "지급 사유",
+                    value="시연용 포인트 지급",
+                    max_chars=200,
+                    key="eco_manual_grant_reason",
+                )
+
+                if st.button(
+                    "선택한 사용자에게 포인트 지급",
+                    type="primary",
+                    use_container_width=True,
+                    key="eco_manual_grant_submit",
+                ):
+                    target_id = user_labels[selected_user_label]
+                    ok, message = grant_manual_points(
+                        target_id,
+                        grant_points_value,
+                        grant_reason_value,
+                        username,
+                    )
+                    st.session_state["eco_flash_message"] = (
+                        "success" if ok else "error",
+                        message,
+                    )
+                    st.rerun()
+
+            with st.expander("최근 관리자 직접 지급 내역 보기"):
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT username, points, reason, granted_by, granted_at
+                    FROM eco_manual_point_grants
+                    ORDER BY id DESC
+                    LIMIT 50
+                    """
+                )
+                manual_grants = cur.fetchall()
+                conn.close()
+
+                if manual_grants:
+                    for grant in manual_grants:
+                        target_name, granted_points, grant_reason, admin_name, grant_time = grant
+                        st.write(
+                            f"**{target_name}** — +{granted_points:,}P · "
+                            f"{grant_reason} · 지급자: {admin_name} · {grant_time}"
+                        )
+                else:
+                    st.info("아직 관리자 직접 지급 내역이 없어요.")
+
+            st.divider()
+            st.subheader("📋 대기 중인 인증 검토")
 
             conn = get_connection()
             cur = conn.cursor()
