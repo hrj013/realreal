@@ -483,9 +483,8 @@ def submit_action(activity, uploaded_file):
             )
 
         return True, (
-            "⏳ 인증 사진을 접수했어요. AI가 확실하게 판단하지 못해 "
-            "관리자 검토 대기 중이에요. 아직 반려된 것은 아니에요. "
-            f"판단 근거: {result['reason']}"
+            "인증 사진을 접수했어요. AI가 확실하게 판단하지 못해 "
+            "관리자 검토 대기 중이에요."
         )
 
     except Exception as e:
