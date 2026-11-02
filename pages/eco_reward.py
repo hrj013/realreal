@@ -15,7 +15,7 @@ from database.db import get_connection
 # 기본 설정
 # ==========================================
 
-AI_MODEL = "gpt-4.1-mini"
+GEMINI_MODEL = "gemini-2.5-flash"
 AUTO_APPROVE_CONFIDENCE = 0.65
 
 ACTIVITIES = {
@@ -207,13 +207,13 @@ def analyze_photo(image_bytes, mime_type, activity):
     사진이 애매하거나 AI 분석에 실패하면 review로 처리한다.
     """
 
-    client = get_openai_client()
+    client = get_gemini_client()
 
     if client is None:
         return {
             "decision": "review",
             "confidence": 0.0,
-            "reason": "API 키가 설정되지 않았거나 읽을 수 없어 관리자 확인이 필요합니다.",
+            "reason": "Gemini API 키가 설정되지 않았거나 읽을 수 없어 관리자 확인이 필요합니다.",
         }
 
     activity_guides = {
@@ -314,30 +314,24 @@ fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
 """
 
     try:
-        encoded_image = base64.b64encode(image_bytes).decode("utf-8")
-        data_url = f"data:{mime_type};base64,{encoded_image}"
-
-        response = client.responses.create(
-            model=AI_MODEL,
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": prompt,
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": data_url,
-                            "detail": "high",
-                        },
-                    ],
-                }
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                prompt,
+                genai.types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime_type,
+                ),
             ],
+            config=genai.types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1,
+            ),
         )
 
-        output = response.output_text.strip()
+        output = (response.text or "").strip()
+        if not output:
+            raise ValueError("Gemini 응답이 비어 있습니다.")
 
         # 응답에 불필요한 마크다운이 있더라도 JSON 부분을 추출
         match = re.search(r"\{.*\}", output, re.DOTALL)
