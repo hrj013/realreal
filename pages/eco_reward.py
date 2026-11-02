@@ -9,14 +9,19 @@ from google import genai
 from datetime import datetime
 from openai import OpenAI
 
-from database.db import get_connection
+from database.db import (
+    get_connection,
+    purchase_potion,
+    get_potion_inventory,
+    POTIONS,
+)
 
 
 # ==========================================
 # 기본 설정
 # ==========================================
 
-AI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 AUTO_APPROVE_CONFIDENCE = 0.65
 
 ACTIVITIES = {
@@ -99,19 +104,6 @@ def init_eco_tables():
                 cost INTEGER NOT NULL DEFAULT 0,
                 skin_id TEXT,
                 purchased_at TEXT NOT NULL DEFAULT ''
-            )
-        """)
-
-        # 관리자가 직접 지급한 포인트 이력은 활동 인증 기록과 별도로 보관한다.
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS eco_manual_point_grants (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                username TEXT NOT NULL DEFAULT '',
-                points INTEGER NOT NULL,
-                reason TEXT NOT NULL DEFAULT '',
-                granted_by TEXT NOT NULL DEFAULT '',
-                granted_at TEXT NOT NULL DEFAULT ''
             )
         """)
 
@@ -330,7 +322,7 @@ fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
 
     try:
         response = client.models.generate_content(
-            model=AI_MODEL,
+            model=GEMINI_MODEL,
             contents=[
                 prompt,
                 genai.types.Part.from_bytes(
@@ -383,8 +375,9 @@ fail은 사진이 활동과 명백히 무관할 때만 선택하세요.
             "decision": "review",
             "confidence": 0.0,
             "reason": (
-                f"Gemini API 오류 ({error_type}): {str(e)[:400]}. "
-                "사진은 관리자 확인 대기로 접수됩니다."
+                f"AI 분석 요청을 완료하지 못했습니다 ({error_type}). "
+                "사진은 관리자 확인 대기로 접수됩니다. "
+                "잠시 후 다시 시도해도 반복되면 관리자에게 알려 주세요."
             ),
         }
 
@@ -495,8 +488,9 @@ def submit_action(activity, uploaded_file):
             )
 
         return True, (
-            "인증 사진을 접수했어요. AI가 확실하게 판단하지 못해 "
-            "관리자 검토 대기 중이에요."
+            "⏳ 인증 사진을 접수했어요. AI가 확실하게 판단하지 못해 "
+            "관리자 검토 대기 중이에요. 아직 반려된 것은 아니에요. "
+            f"판단 근거: {result['reason']}"
         )
 
     except Exception as e:
@@ -579,76 +573,6 @@ def review_action(action_id, approve, rejection_reason=""):
 
 
 # ==========================================
-# 관리자 직접 포인트 지급
-# ==========================================
-
-def grant_manual_points(target_user_id, points, reason, granted_by):
-    """활동 인증과 별개로 관리자가 특정 사용자에게 포인트를 지급한다."""
-    try:
-        points = int(points)
-    except (TypeError, ValueError):
-        return False, "지급할 포인트는 숫자로 입력해 주세요."
-
-    reason = str(reason or "").strip()
-    if points <= 0:
-        return False, "지급 포인트는 1 이상이어야 해요."
-    if points > 1000000:
-        return False, "한 번에 지급할 수 있는 포인트는 최대 1,000,000P예요."
-    if not reason:
-        return False, "지급 사유를 입력해 주세요."
-
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT username FROM users WHERE id = ?",
-            (target_user_id,),
-        )
-        target = cur.fetchone()
-        if not target:
-            return False, "선택한 사용자를 찾을 수 없어요."
-
-        target_username = target[0] or "알 수 없음"
-        granted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        cur.execute(
-            """
-            UPDATE users
-            SET green_point = COALESCE(green_point, 0) + ?
-            WHERE id = ?
-            """,
-            (points, target_user_id),
-        )
-        if cur.rowcount != 1:
-            conn.rollback()
-            return False, "포인트 지급에 실패했어요. 사용자를 다시 확인해 주세요."
-
-        cur.execute(
-            """
-            INSERT INTO eco_manual_point_grants
-                (user_id, username, points, reason, granted_by, granted_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                target_user_id,
-                target_username,
-                points,
-                reason,
-                str(granted_by or "관리자"),
-                granted_at,
-            ),
-        )
-
-        conn.commit()
-        return True, f"{target_username}님에게 {points:,}P를 지급했어요."
-    except Exception as e:
-        conn.rollback()
-        return False, f"포인트 지급 중 오류가 발생했어요: {e}"
-    finally:
-        conn.close()
-
-
-# ==========================================
 # 보상 상점
 # ==========================================
 
@@ -709,7 +633,7 @@ st.caption("환경을 보호하고 포인트를 모아 보상을 받아 보세�
 
 # st.rerun() 이후에도 작업 결과 메시지가 사라지지 않도록 세션에 보관한다.
 def show_status_popup(kind, title, message):
-    """화면 중앙 결과 안내창. HTML X 버튼을 누르면 브라우저에서 즉시 닫는다."""
+    """화면 중앙에 크게 표시되는 인증 결과 안내창."""
     colors = {
         "success": ("#16803c", "#e8f7ed", "🎉"),
         "error": ("#c62828", "#fdecec", "❌"),
@@ -719,20 +643,9 @@ def show_status_popup(kind, title, message):
     accent, background, emoji = colors.get(kind, colors["info"])
     safe_title = html.escape(str(title))
     safe_message = html.escape(str(message))
-
     st.markdown(
         f"""
         <style>
-        #eco-status-dismiss {{
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            opacity: 0;
-            pointer-events: none;
-        }}
-        #eco-status-dismiss:checked + .eco-status-overlay {{
-            display: none !important;
-        }}
         .eco-status-overlay {{
             position: fixed;
             inset: 0;
@@ -744,41 +657,19 @@ def show_status_popup(kind, title, message):
             padding: 20px;
         }}
         .eco-status-card {{
-            position: relative;
             width: min(620px, 82vw);
             min-height: 220px;
             box-sizing: border-box;
             background: {background};
             border: 4px solid {accent};
             border-radius: 28px;
-            padding: 48px 34px 38px;
+            padding: 38px 34px;
             text-align: center;
             box-shadow: 0 16px 55px rgba(0,0,0,.28);
             display: flex;
             flex-direction: column;
             justify-content: center;
             gap: 18px;
-        }}
-        .eco-status-close {{
-            position: absolute;
-            top: 10px;
-            right: 12px;
-            width: 38px;
-            height: 38px;
-            border: 0;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.09);
-            color: #333;
-            font-size: 30px;
-            font-weight: 500;
-            line-height: 38px;
-            cursor: pointer;
-            display: block;
-            text-align: center;
-            padding: 0;
-        }}
-        .eco-status-close:hover {{
-            background: rgba(0, 0, 0, 0.18);
         }}
         .eco-status-title {{
             color: {accent};
@@ -796,11 +687,8 @@ def show_status_popup(kind, title, message):
             overflow-wrap: anywhere;
         }}
         </style>
-        <input type="checkbox" id="eco-status-dismiss" aria-label="안내창 닫기">
-        <div class="eco-status-overlay" id="eco-status-overlay">
+        <div class="eco-status-overlay">
           <div class="eco-status-card">
-            <label for="eco-status-dismiss" class="eco-status-close"
-                   aria-label="안내창 닫기" title="닫기">×</label>
             <div style="font-size: clamp(42px, 5vw, 58px);">{emoji}</div>
             <p class="eco-status-title">{safe_title}</p>
             <p class="eco-status-message">{safe_message}</p>
@@ -822,7 +710,6 @@ if _flash_message:
         show_status_popup("warning", "인증 반려", _flash_text)
     else:
         show_status_popup("info", "관리자 검토 대기", _flash_text)
-
 
 # 관리자가 나중에 승인/반려한 결과는 해당 사용자가 페이지에 들어왔을 때 한 번 크게 알린다.
 conn = get_connection()
@@ -1024,6 +911,45 @@ with tab_shop:
                 st.rerun()
 
     st.divider()
+    st.subheader("🧪 소모성 물약 상점")
+    st.caption("물약은 구매 후 인벤토리에 보관되며, 게임에서 사용할 때 1개씩 소모됩니다. 보유 수량 제한은 없습니다.")
+
+    potion_columns = st.columns(2)
+    for index, (potion_id, potion) in enumerate(POTIONS.items()):
+        with potion_columns[index % 2]:
+            with st.container(border=True):
+                st.markdown(f"### {potion['name']}")
+                st.write(potion["description"])
+                st.write(f"가격: **{potion['price']}P**")
+                quantity = st.number_input(
+                    "구매 수량", min_value=1, step=1, value=1,
+                    key=f"potion_quantity_{potion_id}"
+                )
+                if st.button(
+                    f"{potion['name']} 구매",
+                    key=f"buy_potion_{potion_id}",
+                    use_container_width=True,
+                ):
+                    ok, message = purchase_potion(user_id, potion_id, quantity)
+                    st.session_state["eco_flash_message"] = (
+                        "success" if ok else "error", message
+                    )
+                    st.rerun()
+
+    st.divider()
+    st.subheader("🎒 내 물약 인벤토리")
+    potion_inventory = get_potion_inventory(user_id)
+    inventory_columns = st.columns(2)
+    for index, (potion_id, potion) in enumerate(POTIONS.items()):
+        with inventory_columns[index % 2]:
+            st.metric(
+                potion["name"],
+                f"{potion_inventory.get(potion_id, 0)}개 보유",
+            )
+
+    st.caption("부활 물약은 게임 오버 후 사용할 수 있습니다. 점수 배수 물약은 한 게임에서 2배 또는 3배 중 하나만 사용할 수 있고, 점프 높이와 캐릭터 크기 물약은 중첩 사용할 수 있습니다.")
+
+    st.divider()
     st.subheader("내가 구매한 보상")
 
     conn = get_connection()
@@ -1073,92 +999,6 @@ with tab_admin:
 
         if entered_password == admin_password:
             st.success("관리자 인증 완료")
-
-            # 관리자 직접 포인트 지급
-            st.divider()
-            st.subheader("🎁 특정 사용자에게 포인트 직접 지급")
-            st.caption("환경보호 활동 인증 없이 포인트를 지급합니다. 지급 내역은 인증 기록과 별도로 저장돼요.")
-
-            conn = get_connection()
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, username FROM users ORDER BY username COLLATE NOCASE"
-            )
-            all_users = cur.fetchall()
-            conn.close()
-
-            if not all_users:
-                st.info("포인트를 지급할 사용자가 없어요.")
-            else:
-                user_labels = {
-                    f"{name} (ID: {uid})": uid
-                    for uid, name in all_users
-                }
-                selected_user_label = st.selectbox(
-                    "지급 대상 사용자",
-                    list(user_labels.keys()),
-                    key="eco_manual_grant_user",
-                )
-                grant_points_value = st.number_input(
-                    "지급할 포인트",
-                    min_value=1,
-                    max_value=1000000,
-                    value=100,
-                    step=10,
-                    key="eco_manual_grant_points",
-                )
-                grant_reason_value = st.text_input(
-                    "지급 사유",
-                    value="시연용 포인트 지급",
-                    max_chars=200,
-                    key="eco_manual_grant_reason",
-                )
-
-                if st.button(
-                    "선택한 사용자에게 포인트 지급",
-                    type="primary",
-                    use_container_width=True,
-                    key="eco_manual_grant_submit",
-                ):
-                    target_id = user_labels[selected_user_label]
-                    ok, message = grant_manual_points(
-                        target_id,
-                        grant_points_value,
-                        grant_reason_value,
-                        username,
-                    )
-                    st.session_state["eco_flash_message"] = (
-                        "success" if ok else "error",
-                        message,
-                    )
-                    st.rerun()
-
-            with st.expander("최근 관리자 직접 지급 내역 보기"):
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    SELECT username, points, reason, granted_by, granted_at
-                    FROM eco_manual_point_grants
-                    ORDER BY id DESC
-                    LIMIT 50
-                    """
-                )
-                manual_grants = cur.fetchall()
-                conn.close()
-
-                if manual_grants:
-                    for grant in manual_grants:
-                        target_name, granted_points, grant_reason, admin_name, grant_time = grant
-                        st.write(
-                            f"**{target_name}** — +{granted_points:,}P · "
-                            f"{grant_reason} · 지급자: {admin_name} · {grant_time}"
-                        )
-                else:
-                    st.info("아직 관리자 직접 지급 내역이 없어요.")
-
-            st.divider()
-            st.subheader("📋 대기 중인 인증 검토")
 
             conn = get_connection()
             cur = conn.cursor()
