@@ -621,3 +621,106 @@ def get_user_points(user_id):
 
     finally:
         conn.close()
+        
+# -----------------------------------------
+# 13. 스킨 (보유 / 장착)
+# -----------------------------------------
+
+SKIN_IDS = ("basic", "leaf", "ocean", "rainbow")
+
+
+def get_owned_skin_ids(user_id):
+    """구매한 스킨 ID 집합 (기본 스킨은 항상 보유)"""
+
+    owned = {"basic"}
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT DISTINCT skin_id
+            FROM eco_reward_purchases
+            WHERE user_id = ?
+              AND skin_id IS NOT NULL
+              AND skin_id != ''
+        """, (int(user_id),))
+
+        for (skin_id,) in cursor.fetchall():
+            owned.add(skin_id)
+
+    except sqlite3.OperationalError:
+        # 환경보호 보상 페이지를 한 번도 열지 않아
+        # 구매 기록 테이블이 아직 없는 경우
+        pass
+
+    finally:
+        conn.close()
+
+    return owned
+
+
+def get_current_skin(user_id):
+    """현재 장착 중인 스킨 ID 반환 (보유하지 않았거나 이상한 값이면 basic)"""
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT current_skin
+            FROM users
+            WHERE id = ?
+        """, (int(user_id),))
+
+        row = cursor.fetchone()
+
+    finally:
+        conn.close()
+
+    skin_id = row[0] if row and row[0] else "basic"
+
+    if skin_id not in SKIN_IDS:
+        return "basic"
+
+    if skin_id not in get_owned_skin_ids(user_id):
+        return "basic"
+
+    return skin_id
+
+
+def set_current_skin(user_id, skin_id):
+    """스킨 장착. 보유한 스킨만 장착할 수 있다."""
+
+    if skin_id not in SKIN_IDS:
+        return False, "존재하지 않는 스킨이에요."
+
+    if skin_id not in get_owned_skin_ids(user_id):
+        return False, "보유하지 않은 스킨이에요."
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            UPDATE users
+            SET current_skin = ?
+            WHERE id = ?
+        """, (skin_id, int(user_id)))
+
+        conn.commit()
+
+        if cursor.rowcount != 1:
+            return False, "스킨을 변경하지 못했어요."
+
+        if skin_id == "basic":
+            return True, "기본 스킨으로 바꿨어요."
+
+        return True, "스킨을 장착했어요."
+
+    except sqlite3.Error:
+        conn.rollback()
+        return False, "스킨 변경 중 오류가 발생했어요."
+
+    finally:
+        conn.close()
