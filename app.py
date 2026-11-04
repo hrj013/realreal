@@ -5,6 +5,9 @@ from database.db import (
     register_user,
     login_user,
     save_game_record,
+    get_potion_inventory,
+    use_potion,
+    get_user_points,
 )
 
 from game_component import eco_jump_game
@@ -47,6 +50,18 @@ if "last_game_result" not in st.session_state:
 if "game_save_message" not in st.session_state:
     st.session_state.game_save_message = None
 
+# 게임을 새로 시작할 때마다 1씩 증가 (게임 화면을 새로 만들기 위한 값)
+if "game_instance" not in st.session_state:
+    st.session_state.game_instance = 0
+
+# 게임에 전달할 보유 물약 수량 (게임 시작 시점의 값)
+if "potion_snapshot" not in st.session_state:
+    st.session_state.potion_snapshot = {}
+
+# 이미 DB에 반영한 물약 사용 기록의 event_id
+if "handled_potion_events" not in st.session_state:
+    st.session_state.handled_potion_events = []
+
 
 # -----------------------------------------
 # 3. 메인 페이지
@@ -59,22 +74,25 @@ def home_page():
     # -----------------------------------------
 
     if st.session_state.logged_in:
-
         user = st.session_state.user
 
         st.title("🌱 Eco Jump")
         st.success(f"환영합니다, {user[1]}님!")
 
-        # 보유 포인트 표시
+        # 보유 포인트 표시 (로그인할 때 값이 아니라 최신 DB 값)
+        points = get_user_points(user[0])
+        coin, green_point = points if points else (user[2], user[3])
+
         col1, col2 = st.columns(2)
 
         with col1:
-            st.metric("🪙 COIN", user[2])
+            st.metric("🪙 COIN", coin)
 
         with col2:
-            st.metric("🌱 GREEN POINT", user[3])
+            st.metric("🌱 GREEN POINT", green_point)
 
         st.divider()
+
         st.subheader("🎮 GAME")
 
         # 게임 시작 버튼
@@ -83,6 +101,11 @@ def home_page():
             use_container_width=True,
         ):
             st.session_state.playing = True
+            st.session_state.game_instance += 1
+
+            # 게임 시작 시점의 보유 물약 수량을 게임에 전달
+            st.session_state.potion_snapshot = get_potion_inventory(user[0])
+
             st.session_state.last_game_result = None
             st.session_state.game_save_message = None
             st.rerun()
@@ -92,12 +115,39 @@ def home_page():
         # -----------------------------------------
 
         if st.session_state.playing:
-
             game_result = eco_jump_game(
                 skin=user[4] or "basic",
-                key="eco_jump_game",
+                potions=st.session_state.potion_snapshot,
+                key=f"eco_jump_game_{st.session_state.game_instance}",
                 default=None,
             )
+
+            # -----------------------------------------
+            # 물약 사용 기록을 DB에 반영
+            # 같은 event_id는 한 번만 처리한다.
+            # -----------------------------------------
+
+            if isinstance(game_result, dict):
+                for use in game_result.get("uses") or []:
+                    event_id = use.get("event_id")
+
+                    if (
+                        not event_id
+                        or event_id in st.session_state.handled_potion_events
+                    ):
+                        continue
+
+                    ok, message = use_potion(
+                        user[0],
+                        use.get("potion_id"),
+                        game_result.get("run_id"),
+                        event_id,
+                    )
+
+                    st.session_state.handled_potion_events.append(event_id)
+
+                    if not ok:
+                        st.warning(message)
 
             # -----------------------------------------
             # 게임 종료 결과 처리 및 저장
@@ -107,7 +157,6 @@ def home_page():
                 isinstance(game_result, dict)
                 and game_result.get("finished") is True
             ):
-
                 run_id = game_result.get("run_id")
 
                 # 실행 ID가 없으면 중복 방지 처리가 불가능하므로
@@ -119,7 +168,6 @@ def home_page():
                     )
 
                 elif run_id not in st.session_state.saved_game_runs:
-
                     try:
                         score = max(
                             0,
@@ -142,6 +190,7 @@ def home_page():
                             score=score,
                             max_height=max_height,
                             play_time=play_time,
+                            run_id=run_id,
                         )
 
                         if saved:
@@ -177,29 +226,30 @@ def home_page():
 
                 # 이미 처리한 실행 ID라면 DB에 다시 저장하지 않음
 
-            # -----------------------------------------
-            # 게임 결과 표시
-            # -----------------------------------------
+        # -----------------------------------------
+        # 게임 결과 표시
+        # -----------------------------------------
 
-            result = st.session_state.last_game_result
+        result = st.session_state.last_game_result
 
-            if result is not None:
-                st.divider()
-                st.subheader("🏆 게임 결과")
+        if result is not None:
+            st.divider()
 
-                st.metric(
-                    "최고 높이",
-                    f"{result['max_height']:g} m",
-                )
+            st.subheader("🏆 게임 결과")
 
-                st.metric(
-                    "최종 점수",
-                    result["score"],
-                )
+            st.metric(
+                "최고 높이",
+                f"{result['max_height']:g} m",
+            )
 
-                st.write(
-                    f"플레이 시간: {result['play_time']}초"
-                )
+            st.metric(
+                "최종 점수",
+                result["score"],
+            )
+
+            st.write(
+                f"플레이 시간: {result['play_time']}초"
+            )
 
             message = st.session_state.game_save_message
 
@@ -224,6 +274,8 @@ def home_page():
             st.session_state.last_game_result = None
             st.session_state.game_save_message = None
             st.session_state.saved_game_runs = []
+            st.session_state.potion_snapshot = {}
+            st.session_state.handled_potion_events = []
             st.rerun()
 
     # -----------------------------------------
@@ -231,7 +283,6 @@ def home_page():
     # -----------------------------------------
 
     else:
-
         st.title("🌱 ECO JUMP")
         st.write("탄소를 줄이고 더 높이 점프하세요!")
 
@@ -244,7 +295,6 @@ def home_page():
         # -----------------------------------------
 
         with login_tab:
-
             st.subheader("로그인")
 
             username = st.text_input(
@@ -262,7 +312,6 @@ def home_page():
                 "로그인",
                 use_container_width=True,
             ):
-
                 if not username or not password:
                     st.warning(
                         "아이디와 비밀번호를 입력해주세요."
@@ -278,6 +327,8 @@ def home_page():
                         st.session_state.last_game_result = None
                         st.session_state.game_save_message = None
                         st.session_state.saved_game_runs = []
+                        st.session_state.potion_snapshot = {}
+                        st.session_state.handled_potion_events = []
                         st.rerun()
 
                     else:
@@ -290,7 +341,6 @@ def home_page():
         # -----------------------------------------
 
         with signup_tab:
-
             st.subheader("회원가입")
 
             new_username = st.text_input(
@@ -314,7 +364,6 @@ def home_page():
                 "회원가입",
                 use_container_width=True,
             ):
-
                 if not new_username or not new_password:
                     st.warning(
                         "아이디와 비밀번호를 입력해주세요."
