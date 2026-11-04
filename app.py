@@ -8,6 +8,7 @@ from database.db import (
     get_potion_inventory,
     use_potion,
     get_user_points,
+    get_current_skin,
 )
 
 from game_component import eco_jump_game
@@ -116,7 +117,7 @@ def home_page():
 
         if st.session_state.playing:
             game_result = eco_jump_game(
-                skin=user[4] or "basic",
+                skin=get_current_skin(user[0]),
                 potions=st.session_state.potion_snapshot,
                 key=f"eco_jump_game_{st.session_state.game_instance}",
                 default=None,
