@@ -1,4 +1,3 @@
-
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -23,6 +22,65 @@ const cameraTargetOffset = 350;
 const startY = 580;
 const floorY = 750;
 const floorHeight = 40;
+
+// 캐릭터 기본 크기
+const BASE_PLAYER_WIDTH = 30;
+const BASE_PLAYER_HEIGHT = 40;
+
+// 물약 중첩 한도 (너무 커지면 게임이 깨지므로 제한)
+const MAX_JUMP_MULTIPLIER = 8;
+const MAX_SIZE_MULTIPLIER = 8;
+
+// ========================================
+// 물약 정보
+// ========================================
+
+const POTION_LABELS = {
+    revive: "❤️ 부활",
+    score_2x: "✨ 점수x2",
+    score_3x: "💎 점수x3",
+    jump_2x: "🚀 점프x2",
+    size_2x: "🧪 크기x2"
+};
+
+// 화면 아래 물약 바에 표시되는 순서
+const POTION_BAR_ORDER = [
+    "revive",
+    "score_2x",
+    "score_3x",
+    "jump_2x",
+    "size_2x"
+];
+
+// 키보드 단축키 (1~4)
+const POTION_KEYS = {
+    "1": "score_2x",
+    "2": "score_3x",
+    "3": "jump_2x",
+    "4": "size_2x"
+};
+
+// 보유 수량 (Streamlit에서 처음 한 번만 받아오고, 이후에는 여기서 차감)
+const potionInventory = {
+    revive: 0,
+    score_2x: 0,
+    score_3x: 0,
+    jump_2x: 0,
+    size_2x: 0
+};
+
+let inventoryInitialized = false;
+
+// 이번 게임에서 사용한 물약 기록 (Streamlit이 DB에서 차감할 때 사용)
+let potionUses = [];
+
+// 이번 게임의 물약 효과
+let scoreMultiplier = 1;
+let jumpMultiplier = 1;
+let sizeMultiplier = 1;
+
+// 게임 오버 후 부활 여부를 고르는 중인지
+let awaitingRevive = false;
 
 // ========================================
 // Streamlit 연동 및 플레이 기록
@@ -56,31 +114,41 @@ function getPlayTime() {
 }
 
 // ========================================
-// Streamlit 결과 전송
+// Streamlit 값 전송
 // ========================================
+// 항상 "이번 게임의 전체 상태"를 보낸다.
+// 물약 사용 기록(uses)은 누적 목록이라서,
+// 값이 연속으로 전송되어 일부가 덮어써져도 기록이 유실되지 않는다.
 
-function sendResultToStreamlit() {
-    if (resultSent) return;
-
-    resultSent = true;
-
-    const result = {
+function buildState(finished) {
+    return {
         run_id: runId,
         score: Number(score) || 0,
         max_height: Number(maxHeight) || 0,
         play_time: getPlayTime(),
         skin: currentSkin,
-        finished: true
+        finished: finished,
+        uses: potionUses.slice()
     };
+}
 
+function postStateToStreamlit(finished) {
     window.parent.postMessage(
         {
             isStreamlitMessage: true,
             type: "streamlit:setComponentValue",
-            value: result
+            value: buildState(finished),
+            dataType: "json"
         },
         "*"
     );
+}
+
+function sendResultToStreamlit() {
+    if (resultSent) return;
+
+    resultSent = true;
+    postStateToStreamlit(true);
 }
 
 // ========================================
@@ -90,8 +158,8 @@ function sendResultToStreamlit() {
 const player = {
     x: 100,
     y: startY,
-    width: 30,
-    height: 40,
+    width: BASE_PLAYER_WIDTH,
+    height: BASE_PLAYER_HEIGHT,
     velocityX: 0,
     velocityY: 0,
     grounded: false
@@ -105,6 +173,17 @@ let cameraY = 0;
 let maxHeight = 0;
 let score = 0;
 let gameOver = false;
+
+// 점수 = 최고 높이 x 점수 배수
+function refreshScore() {
+    score = Math.floor(maxHeight * scoreMultiplier);
+
+    const scoreElement = document.getElementById("score");
+
+    if (scoreElement) {
+        scoreElement.textContent = score;
+    }
+}
 
 // 500점마다 난이도 상승
 function getDifficulty() {
@@ -131,6 +210,24 @@ let mouseStartX = 0;
 let mouseStartY = 0;
 let mouseX = 0;
 let mouseY = 0;
+
+function getCanvasPos(event) {
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+        x: (event.clientX - rect.left) * canvas.width / rect.width,
+        y: (event.clientY - rect.top) * canvas.height / rect.height
+    };
+}
+
+function pointInRect(x, y, rect) {
+    return (
+        x >= rect.x &&
+        x <= rect.x + rect.w &&
+        y >= rect.y &&
+        y <= rect.y + rect.h
+    );
+}
 
 // ========================================
 // 플랫폼
@@ -284,25 +381,219 @@ function jump(targetX, targetY) {
     player.velocityX = (dx / distance) * power;
     player.velocityY = (dy / distance) * power;
 
+    // 점프 높이 물약:
+    // 점프 높이는 속도의 제곱에 비례하므로,
+    // 높이를 N배로 만들려면 위쪽 속도에 √N을 곱한다.
+    if (player.velocityY < 0 && jumpMultiplier > 1) {
+        player.velocityY *= Math.sqrt(jumpMultiplier);
+    }
+
     player.grounded = false;
+}
+
+// ========================================
+// 물약 사용
+// ========================================
+
+function canUsePotion(potionId) {
+    if (!(potionId in potionInventory)) return false;
+    if (resultSent) return false;
+    if ((potionInventory[potionId] || 0) < 1) return false;
+
+    // 부활 물약은 게임 오버 후 선택 화면에서만 사용 가능
+    if (potionId === "revive") return awaitingRevive;
+
+    // 나머지 물약은 플레이 중에만 사용 가능
+    if (gameOver) return false;
+
+    if (potionId === "score_2x" || potionId === "score_3x") {
+        // 점수 배수 물약은 한 게임에 하나만
+        return scoreMultiplier === 1;
+    }
+
+    if (potionId === "jump_2x") {
+        return jumpMultiplier < MAX_JUMP_MULTIPLIER;
+    }
+
+    if (potionId === "size_2x") {
+        return sizeMultiplier < MAX_SIZE_MULTIPLIER;
+    }
+
+    return false;
+}
+
+function applyPlayerSize() {
+    const centerX = player.x + player.width / 2;
+    const bottom = player.y + player.height;
+
+    player.width = BASE_PLAYER_WIDTH * sizeMultiplier;
+    player.height = BASE_PLAYER_HEIGHT * sizeMultiplier;
+
+    // 발 위치와 가로 중심은 유지한 채로 커진다.
+    player.x = Math.min(
+        Math.max(0, centerX - player.width / 2),
+        canvas.width - player.width
+    );
+    player.y = bottom - player.height;
+}
+
+function usePotion(potionId) {
+    if (!canUsePotion(potionId)) return false;
+
+    // 보유 수량 차감 + 사용 기록 추가
+    potionInventory[potionId] -= 1;
+
+    potionUses.push({
+        event_id: createRunId(),
+        potion_id: potionId
+    });
+
+    switch (potionId) {
+        case "score_2x":
+            scoreMultiplier = 2;
+            refreshScore();
+            break;
+
+        case "score_3x":
+            scoreMultiplier = 3;
+            refreshScore();
+            break;
+
+        case "jump_2x":
+            jumpMultiplier *= 2;
+            break;
+
+        case "size_2x":
+            sizeMultiplier *= 2;
+            applyPlayerSize();
+            break;
+
+        case "revive":
+            reviveAtSafePlatform();
+            break;
+    }
+
+    // Streamlit에 사용 기록을 알려서 DB에서 차감하게 한다.
+    postStateToStreamlit(false);
+
+    return true;
+}
+
+// ========================================
+// 부활
+// ========================================
+
+function reviveAtSafePlatform() {
+    // 최고 높이에 도달했던 위치와 가장 가까운 발판에서 부활한다.
+    const targetY = startY - maxHeight;
+
+    let best = null;
+    let bestDiff = Infinity;
+
+    for (const platform of platforms) {
+        const standY = platform.y - player.height;
+        const diff = Math.abs(standY - targetY);
+
+        if (diff < bestDiff) {
+            best = platform;
+            bestDiff = diff;
+        }
+    }
+
+    if (!best) {
+        best = platforms[0];
+    }
+
+    player.x = Math.min(
+        Math.max(0, best.x + best.width / 2 - player.width / 2),
+        canvas.width - player.width
+    );
+    player.y = best.y - player.height;
+    player.velocityX = 0;
+    player.velocityY = 0;
+    player.grounded = true;
+
+    cameraY = player.y - cameraTargetOffset;
+
+    awaitingRevive = false;
+    gameOver = false;
+    dragging = false;
+
+    const gameOverElement = document.getElementById("gameOver");
+
+    if (gameOverElement) {
+        gameOverElement.style.display = "none";
+    }
 }
 
 // ========================================
 // 마우스 이벤트
 // ========================================
 
+// 물약 바 버튼 위치
+const potionButtons = (function() {
+    const buttonWidth = 140;
+    const buttonHeight = 44;
+    const gap = 10;
+    const totalWidth =
+        POTION_BAR_ORDER.length * buttonWidth +
+        (POTION_BAR_ORDER.length - 1) * gap;
+    const startX = (canvas.width - totalWidth) / 2;
+    const y = 648;
+
+    return POTION_BAR_ORDER.map(function(id, index) {
+        return {
+            id: id,
+            x: startX + index * (buttonWidth + gap),
+            y: y,
+            w: buttonWidth,
+            h: buttonHeight
+        };
+    });
+})();
+
+// 부활 선택 화면 버튼 위치
+const reviveButtonRect = { x: 190, y: 380, w: 200, h: 56 };
+const giveUpButtonRect = { x: 410, y: 380, w: 200, h: 56 };
+
+function handlePotionBarClick(x, y) {
+    // 물약 바 영역에서 시작한 클릭은 점프 조준으로 쓰지 않는다.
+    if (y < 640) return false;
+
+    for (const button of potionButtons) {
+        if (pointInRect(x, y, button)) {
+            usePotion(button.id);
+            break;
+        }
+    }
+
+    return true;
+}
+
+function handleRevivePromptClick(x, y) {
+    if (pointInRect(x, y, reviveButtonRect)) {
+        usePotion("revive");
+    } else if (pointInRect(x, y, giveUpButtonRect)) {
+        finalizeGame();
+    }
+}
+
 canvas.addEventListener("mousedown", function(event) {
+    const pos = getCanvasPos(event);
+
+    if (awaitingRevive) {
+        handleRevivePromptClick(pos.x, pos.y);
+        return;
+    }
+
     if (gameOver) return;
+
+    if (handlePotionBarClick(pos.x, pos.y)) return;
 
     dragging = true;
 
-    const rect = canvas.getBoundingClientRect();
-
-    mouseStartX =
-        (event.clientX - rect.left) * canvas.width / rect.width;
-
-    mouseStartY =
-        (event.clientY - rect.top) * canvas.height / rect.height;
+    mouseStartX = pos.x;
+    mouseStartY = pos.y;
 
     mouseX = mouseStartX;
     mouseY = mouseStartY;
@@ -311,13 +602,10 @@ canvas.addEventListener("mousedown", function(event) {
 canvas.addEventListener("mousemove", function(event) {
     if (!dragging) return;
 
-    const rect = canvas.getBoundingClientRect();
+    const pos = getCanvasPos(event);
 
-    mouseX =
-        (event.clientX - rect.left) * canvas.width / rect.width;
-
-    mouseY =
-        (event.clientY - rect.top) * canvas.height / rect.height;
+    mouseX = pos.x;
+    mouseY = pos.y;
 });
 
 canvas.addEventListener("mouseup", function() {
@@ -332,6 +620,15 @@ canvas.addEventListener("mouseleave", function() {
 
     dragging = false;
     jump(mouseX, mouseY);
+});
+
+// 키보드 단축키: 1 점수x2, 2 점수x3, 3 점프x2, 4 크기x2
+window.addEventListener("keydown", function(event) {
+    const potionId = POTION_KEYS[event.key];
+
+    if (potionId) {
+        usePotion(potionId);
+    }
 });
 
 // ========================================
@@ -471,18 +768,14 @@ function updatePlayer() {
 
     if (currentHeight > maxHeight) {
         maxHeight = currentHeight;
-        score = maxHeight;
 
         const heightElement = document.getElementById("height");
-        const scoreElement = document.getElementById("score");
 
         if (heightElement) {
             heightElement.textContent = maxHeight;
         }
 
-        if (scoreElement) {
-            scoreElement.textContent = score;
-        }
+        refreshScore();
     }
 
     // 카메라가 플레이어를 따라감
@@ -619,6 +912,9 @@ function drawFloor() {
 function drawPlayer() {
     const screenY = player.y - cameraY;
 
+    // 크기 물약으로 커진 비율
+    const s = player.width / BASE_PLAYER_WIDTH;
+
     let bodyColor = "#2e7d32";
     let footColor = "#1b5e20";
 
@@ -656,13 +952,33 @@ function drawPlayer() {
 
     // 눈
     ctx.fillStyle = "white";
-    ctx.fillRect(player.x + 7, screenY + 9, 5, 5);
-    ctx.fillRect(player.x + 18, screenY + 9, 5, 5);
+    ctx.fillRect(
+        player.x + 7 * s,
+        screenY + 9 * s,
+        5 * s,
+        5 * s
+    );
+    ctx.fillRect(
+        player.x + 18 * s,
+        screenY + 9 * s,
+        5 * s,
+        5 * s
+    );
 
     // 발
     ctx.fillStyle = footColor;
-    ctx.fillRect(player.x + 2, screenY + 35, 10, 5);
-    ctx.fillRect(player.x + 18, screenY + 35, 10, 5);
+    ctx.fillRect(
+        player.x + 2 * s,
+        screenY + 35 * s,
+        10 * s,
+        5 * s
+    );
+    ctx.fillRect(
+        player.x + 18 * s,
+        screenY + 35 * s,
+        10 * s,
+        5 * s
+    );
 }
 
 // ========================================
@@ -690,12 +1006,121 @@ function drawAim() {
 }
 
 // ========================================
+// 물약 바 그리기
+// ========================================
+
+function drawPotionBar() {
+    ctx.save();
+    ctx.textAlign = "center";
+
+    for (const button of potionButtons) {
+        const usable = canUsePotion(button.id);
+        const count = potionInventory[button.id] || 0;
+
+        ctx.fillStyle = usable
+            ? "rgba(46,125,50,0.92)"
+            : "rgba(60,60,60,0.55)";
+        ctx.fillRect(button.x, button.y, button.w, button.h);
+
+        ctx.fillStyle = "white";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText(
+            POTION_LABELS[button.id],
+            button.x + button.w / 2,
+            button.y + 19
+        );
+
+        ctx.font = "12px sans-serif";
+        ctx.fillText(
+            "보유 " + count,
+            button.x + button.w / 2,
+            button.y + 36
+        );
+    }
+
+    ctx.restore();
+}
+
+// ========================================
+// 부활 선택 화면 그리기
+// ========================================
+
+function drawReviveOverlay() {
+    if (!awaitingRevive) return;
+
+    ctx.save();
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 44px sans-serif";
+    ctx.fillText("GAME OVER", canvas.width / 2, 280);
+
+    ctx.font = "20px sans-serif";
+    ctx.fillText(
+        "❤️ 부활 물약 " + (potionInventory.revive || 0) +
+        "개 보유 · 사용하시겠어요?",
+        canvas.width / 2,
+        335
+    );
+
+    ctx.fillStyle = "#e53935";
+    ctx.fillRect(
+        reviveButtonRect.x,
+        reviveButtonRect.y,
+        reviveButtonRect.w,
+        reviveButtonRect.h
+    );
+
+    ctx.fillStyle = "#616161";
+    ctx.fillRect(
+        giveUpButtonRect.x,
+        giveUpButtonRect.y,
+        giveUpButtonRect.w,
+        giveUpButtonRect.h
+    );
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText(
+        "부활 물약 사용",
+        reviveButtonRect.x + reviveButtonRect.w / 2,
+        reviveButtonRect.y + 35
+    );
+    ctx.fillText(
+        "게임 종료",
+        giveUpButtonRect.x + giveUpButtonRect.w / 2,
+        giveUpButtonRect.y + 35
+    );
+
+    ctx.restore();
+}
+
+// ========================================
 // 게임 오버
 // ========================================
 
 function endGame() {
     if (gameOver) return;
 
+    gameOver = true;
+    dragging = false;
+
+    // 부활 물약이 있으면 바로 끝내지 않고 선택 화면을 보여준다.
+    // (결과는 아직 Streamlit에 보내지 않는다.)
+    if ((potionInventory.revive || 0) > 0) {
+        awaitingRevive = true;
+        return;
+    }
+
+    finalizeGame();
+}
+
+// 게임을 최종적으로 끝내고 결과를 저장한다.
+function finalizeGame() {
+    awaitingRevive = false;
     gameOver = true;
     dragging = false;
 
@@ -722,11 +1147,14 @@ function endGame() {
 
     sendResultToStreamlit();
 }
+
 // ========================================
 // 다시 시작
 // ========================================
 
 function restartGame() {
+    player.width = BASE_PLAYER_WIDTH;
+    player.height = BASE_PLAYER_HEIGHT;
     player.x = 100;
     player.y = startY;
     player.velocityX = 0;
@@ -738,6 +1166,13 @@ function restartGame() {
     score = 0;
     gameOver = false;
     dragging = false;
+
+    // 물약 효과는 게임마다 초기화 (보유 수량은 유지)
+    potionUses = [];
+    scoreMultiplier = 1;
+    jumpMultiplier = 1;
+    sizeMultiplier = 1;
+    awaitingRevive = false;
 
     runId = createRunId();
     gameStartTime = Date.now();
@@ -775,6 +1210,8 @@ function gameLoop() {
     drawFloor();
     drawPlayer();
     drawAim();
+    drawPotionBar();
+    drawReviveOverlay();
 
     requestAnimationFrame(gameLoop);
 }
@@ -794,6 +1231,24 @@ window.addEventListener("message", function(event) {
 
     if (args.skin) {
         currentSkin = String(args.skin);
+    }
+
+    // 보유 물약 수량은 게임이 시작될 때 한 번만 받는다.
+    // (Streamlit이 다시 실행될 때마다 값이 오지만,
+    //  이미 이 게임에서 차감한 수량을 덮어쓰면 안 되기 때문)
+    if (
+        !inventoryInitialized &&
+        args.potions &&
+        typeof args.potions === "object"
+    ) {
+        for (const potionId of Object.keys(potionInventory)) {
+            const quantity = parseInt(args.potions[potionId], 10);
+
+            potionInventory[potionId] =
+                Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
+        }
+
+        inventoryInitialized = true;
     }
 });
 
