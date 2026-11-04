@@ -1,4 +1,3 @@
-
 import streamlit as st
 import sqlite3
 import json
@@ -12,6 +11,9 @@ from database.db import (
     get_connection,
     purchase_potion,
     get_potion_inventory,
+    get_owned_skin_ids,
+    get_current_skin,
+    set_current_skin,
     POTIONS,
 )
 
@@ -64,6 +66,9 @@ if not st.session_state.get("logged_in") or not st.session_state.get("user"):
 user = st.session_state.user
 user_id = user[0]
 username = user[1]
+
+# 게임 화면에 전달할 보유 물약 수량을 최신 DB 값으로 갱신
+st.session_state.potion_snapshot = get_potion_inventory(user_id)
 
 
 # ==========================================
@@ -562,6 +567,10 @@ def purchase_reward(reward_name):
     reward = REWARDS[reward_name]
     cost = reward["cost"]
 
+    # 이미 가진 스킨은 다시 살 수 없다.
+    if reward["skin_id"] in get_owned_skin_ids(user_id):
+        return False, "이미 보유한 스킨이에요."
+
     conn = get_connection()
     cur = conn.cursor()
 
@@ -898,24 +907,79 @@ with tab_history:
 with tab_shop:
     st.subheader("🎁 환경보호 보상 상점")
 
+    owned_skins = get_owned_skin_ids(user_id)
+    equipped_skin = get_current_skin(user_id)
+
+    # 기본 스킨
+    with st.container(border=True):
+        st.markdown("### 기본 스킨")
+        st.write("처음부터 사용할 수 있는 기본 캐릭터")
+
+        if equipped_skin == "basic":
+            st.success("✅ 장착 중")
+        elif st.button(
+            "기본 스킨 장착",
+            key="equip_basic",
+            use_container_width=True,
+        ):
+            ok, message = set_current_skin(user_id, "basic")
+            st.session_state["eco_flash_message"] = (
+                "success" if ok else "error",
+                message,
+            )
+            st.rerun()
+
+    # 구매 스킨
     for reward_name, reward in REWARDS.items():
+        skin_id = reward["skin_id"]
+
         with st.container(border=True):
             st.markdown(f"### {reward_name}")
             st.write(reward["description"])
-            st.write(f"가격: **{reward['cost']}P**")
 
-            if st.button(
-                f"{reward_name} 구매",
-                key=f"buy_{reward['skin_id']}",
-                use_container_width=True,
-            ):
-                ok, message = purchase_reward(reward_name)
+            if skin_id in owned_skins:
+                if equipped_skin == skin_id:
+                    st.success("✅ 장착 중")
 
-                st.session_state["eco_flash_message"] = (
-                    "success" if ok else "error",
-                    message,
-                )
-                st.rerun()
+                    if st.button(
+                        "벗기 (기본 스킨으로)",
+                        key=f"unequip_{skin_id}",
+                        use_container_width=True,
+                    ):
+                        ok, message = set_current_skin(user_id, "basic")
+                        st.session_state["eco_flash_message"] = (
+                            "success" if ok else "error",
+                            message,
+                        )
+                        st.rerun()
+
+                elif st.button(
+                    f"{reward_name} 장착",
+                    key=f"equip_{skin_id}",
+                    use_container_width=True,
+                ):
+                    ok, message = set_current_skin(user_id, skin_id)
+                    st.session_state["eco_flash_message"] = (
+                        "success" if ok else "error",
+                        message,
+                    )
+                    st.rerun()
+
+            else:
+                st.write(f"가격: **{reward['cost']}P**")
+
+                if st.button(
+                    f"{reward_name} 구매",
+                    key=f"buy_{skin_id}",
+                    use_container_width=True,
+                ):
+                    ok, message = purchase_reward(reward_name)
+
+                    st.session_state["eco_flash_message"] = (
+                        "success" if ok else "error",
+                        message,
+                    )
+                    st.rerun()
 
     st.divider()
     st.subheader("🧪 소모성 물약 상점")
