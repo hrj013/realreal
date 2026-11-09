@@ -560,6 +560,76 @@ def review_action(action_id, approve, rejection_reason=""):
 
 
 # ==========================================
+# 관리자 포인트 직접 지급 (시연용)
+# ==========================================
+
+# 한 번에 지급할 수 있는 최대 포인트 (실수 방지용)
+ADMIN_GRANT_MAX = 100000
+
+
+def grant_points(target_username, amount):
+    """관리자가 아이디를 지정해 그린 포인트를 직접 지급한다."""
+
+    target_username = (target_username or "").strip()
+
+    if not target_username:
+        return False, "지급할 아이디를 입력해 주세요."
+
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        return False, "지급할 포인트를 숫자로 입력해 주세요."
+
+    if amount <= 0:
+        return False, "1P 이상의 포인트를 입력해 주세요."
+
+    if amount > ADMIN_GRANT_MAX:
+        return False, f"한 번에 {ADMIN_GRANT_MAX}P까지만 지급할 수 있어요."
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            SELECT id, COALESCE(green_point, 0)
+            FROM users
+            WHERE username = ?
+            """,
+            (target_username,),
+        )
+        row = cur.fetchone()
+
+        if not row:
+            return False, f"'{target_username}' 아이디를 찾을 수 없어요."
+
+        target_id, before_points = row
+
+        cur.execute(
+            """
+            UPDATE users
+            SET green_point = COALESCE(green_point, 0) + ?
+            WHERE id = ?
+            """,
+            (amount, target_id),
+        )
+
+        conn.commit()
+
+        return True, (
+            f"{target_username}님에게 {amount}P를 지급했어요. "
+            f"(현재 {before_points + amount}P)"
+        )
+
+    except Exception as e:
+        conn.rollback()
+        return False, f"포인트 지급 중 오류가 발생했어요: {e}"
+
+    finally:
+        conn.close()
+
+
+# ==========================================
 # 보상 상점
 # ==========================================
 
@@ -1070,6 +1140,37 @@ with tab_admin:
 
         if entered_password == admin_password:
             st.success("관리자 인증 완료")
+
+            # 시연용: 아이디를 지정해 포인트를 바로 지급
+            st.markdown("#### 🎁 포인트 직접 지급 (시연용)")
+
+            grant_username = st.text_input(
+                "지급할 아이디",
+                key="grant_username",
+            )
+
+            grant_amount = st.number_input(
+                "지급할 포인트",
+                min_value=1,
+                max_value=ADMIN_GRANT_MAX,
+                step=10,
+                value=100,
+                key="grant_amount",
+            )
+
+            if st.button(
+                "포인트 지급",
+                key="grant_points_button",
+                use_container_width=True,
+            ):
+                ok, message = grant_points(grant_username, grant_amount)
+                st.session_state["eco_flash_message"] = (
+                    "success" if ok else "error",
+                    message,
+                )
+                st.rerun()
+
+            st.divider()
 
             conn = get_connection()
             cur = conn.cursor()
