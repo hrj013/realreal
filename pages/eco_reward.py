@@ -36,6 +36,9 @@ ACTIVITIES = {
     "기타 환경보호 활동": 10,
 }
 
+# 하루 인증 횟수 제한이 없는 활동
+UNLIMITED_ACTIVITIES = {"기타 환경보호 활동"}
+
 REWARDS = {
     "나뭇잎 스킨": {
         "cost": 50,
@@ -381,19 +384,21 @@ def submit_action(activity, uploaded_file):
         today = datetime.now().strftime("%Y-%m-%d")
 
         # 같은 사용자의 같은 활동은 하루 한 번만 제출 가능
-        cur.execute(
-            """
-            SELECT id FROM eco_actions
-            WHERE user_id = ?
-              AND activity = ?
-              AND substr(created_at, 1, 10) = ?
-            LIMIT 1
-            """,
-            (user_id, activity, today),
-        )
+        # (기타 환경보호 활동은 횟수 제한 없음)
+        if activity not in UNLIMITED_ACTIVITIES:
+            cur.execute(
+                """
+                SELECT id FROM eco_actions
+                WHERE user_id = ?
+                  AND activity = ?
+                  AND substr(created_at, 1, 10) = ?
+                LIMIT 1
+                """,
+                (user_id, activity, today),
+            )
 
-        if cur.fetchone():
-            return False, "오늘은 해당 활동을 이미 인증했어요."
+            if cur.fetchone():
+                return False, "오늘은 해당 활동을 이미 인증했어요."
 
         image_bytes = uploaded_file.getvalue()
         mime_type = uploaded_file.type or "image/jpeg"
@@ -869,6 +874,11 @@ with tab_submit:
     )
 
     st.info(f"인증 성공 시 {ACTIVITIES[activity]}P를 받을 수 있어요.")
+
+    if activity in UNLIMITED_ACTIVITIES:
+        st.caption("이 활동은 하루 인증 횟수 제한이 없어요.")
+    else:
+        st.caption("이 활동은 하루에 한 번만 인증할 수 있어요.")
 
     uploaded_file = st.file_uploader(
         "활동 사진 업로드",
