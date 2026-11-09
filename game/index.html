@@ -1,18 +1,21 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Eco Jump</title>
+
+  <!-- 한글 픽셀 폰트 (갈무리). 불러오지 못하면 기본 고정폭 글꼴로 표시됩니다. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
   <link rel="stylesheet" href="game.css">
 </head>
 <body>
   <div id="game-container">
     <div id="hud">
-      <div>🌱 ECO JUMP</div>
-      <div>HEIGHT: <span id="height">0</span> m</div>
-      <div>SCORE: <span id="score">0</span></div>
+      <div class="hud-title">ECO JUMP</div>
+      <div>높이 <span id="height">0</span>m</div>
+      <div>점수 <span id="score">0</span></div>
+      <div>난이도 <span id="difficulty">쉬움</span></div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -50,7 +53,7 @@
     window.parent.postMessage({
       isStreamlitMessage: true,
       type: "streamlit:setFrameHeight",
-      height: 740
+      height: 720
     }, "*");
   </script>
 
