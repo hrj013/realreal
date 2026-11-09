@@ -4,10 +4,143 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 700;
 
+// 픽셀 아트가 뭉개지지 않도록 보간을 끈다.
+ctx.imageSmoothingEnabled = false;
+
 // ========================================
-// 게임 설정
+// 픽셀 스타일 설정
 // ========================================
 
+// 픽셀 한 칸의 크기. 배경과 발판은 이 격자에 맞춰 그린다.
+const PX = 4;
+
+// 한글 픽셀 폰트 (index.html에서 불러온다. 실패하면 monospace 사용)
+const FONT_FAMILY = "'Galmuri14', 'DotGothic16', monospace";
+
+// 레트로 팔레트 (Sweetie 16 기반)
+const PAL = {
+    ink: "#1a1c2c",
+    plum: "#5d275d",
+    red: "#b13e53",
+    orange: "#ef7d57",
+    yellow: "#ffcd75",
+    lime: "#a7f070",
+    green: "#38b764",
+    teal: "#257179",
+    navy: "#29366f",
+    blue: "#3b5dc9",
+    sky: "#41a6f6",
+    cyan: "#73eff7",
+    white: "#f4f4f4",
+    gray: "#94b0c2",
+    slate: "#566c86",
+    dark: "#333c57"
+};
+
+let frameCount = 0;
+
+function setFont(size, bold) {
+    ctx.font = (bold ? "bold " : "") + size + "px " + FONT_FAMILY;
+}
+
+function snap(value) {
+    return Math.round(value / PX) * PX;
+}
+
+function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+}
+
+function mod(value, n) {
+    return ((value % n) + n) % n;
+}
+
+// 같은 입력이면 항상 같은 값(0~1)을 돌려주는 해시 (무늬가 깜빡이지 않게)
+function hash2(a, b) {
+    let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function mixRgb(a, b, t) {
+    return [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t
+    ];
+}
+
+function rgbCss(c) {
+    return (
+        "rgb(" +
+        Math.round(c[0]) + "," +
+        Math.round(c[1]) + "," +
+        Math.round(c[2]) + ")"
+    );
+}
+
+// 모서리가 깎인 픽셀 상자 (바깥 테두리 - 밝은 테두리 - 안쪽 색)
+function drawPixelBox(x, y, w, h, fill, edge) {
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(x + PX, y, w - PX * 2, h);
+    ctx.fillRect(x, y + PX, w, h - PX * 2);
+
+    ctx.fillStyle = edge;
+    ctx.fillRect(x + PX * 2, y + PX, w - PX * 4, h - PX * 2);
+    ctx.fillRect(x + PX, y + PX * 2, w - PX * 2, h - PX * 4);
+
+    ctx.fillStyle = fill;
+    ctx.fillRect(x + PX * 2, y + PX * 2, w - PX * 4, h - PX * 4);
+}
+
+// 문자열 도트 스프라이트 그리기
+function drawSprite(sprite, palette, ox, oy, w, h, flip) {
+    const rows = sprite.length;
+    const cols = sprite[0].length;
+    const cw = w / cols;
+    const ch = h / rows;
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const key = sprite[r][flip ? cols - 1 - c : c];
+
+            if (key === ".") continue;
+
+            ctx.fillStyle = palette[key];
+
+            const x0 = Math.round(ox + c * cw);
+            const y0 = Math.round(oy + r * ch);
+            const x1 = Math.round(ox + (c + 1) * cw);
+            const y1 = Math.round(oy + (r + 1) * ch);
+
+            ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+        }
+    }
+}
+
+// 픽셀 원 (해, 달)
+function drawPixelCircle(cx, cy, r, color) {
+    ctx.fillStyle = color;
+
+    for (let y = -r; y <= r; y += PX) {
+        for (let x = -r; x <= r; x += PX) {
+            if (x * x + y * y <= r * r) {
+                ctx.fillRect(snap(cx + x), snap(cy + y), PX, PX);
+            }
+        }
+    }
+}
+
+// ========================================
+// 물약 정보
+// ========================================
+
+// 게임 설정
 const gravity = 0.5;
 const maxJumpPower = 15;
 const distancePower = 20;
@@ -31,16 +164,21 @@ const BASE_PLAYER_HEIGHT = 40;
 const MAX_JUMP_MULTIPLIER = 8;
 const MAX_SIZE_MULTIPLIER = 8;
 
-// ========================================
-// 물약 정보
-// ========================================
-
 const POTION_LABELS = {
-    revive: "❤️ 부활",
-    score_2x: "✨ 점수x2",
-    score_3x: "💎 점수x3",
-    jump_2x: "🚀 점프x2",
-    size_2x: "🧪 크기x2"
+    revive: "부활",
+    score_2x: "점수x2",
+    score_3x: "점수x3",
+    jump_2x: "점프x2",
+    size_2x: "크기x2"
+};
+
+// 물약 병 색깔
+const POTION_COLORS = {
+    revive: "#b13e53",
+    score_2x: "#ffcd75",
+    score_3x: "#73eff7",
+    jump_2x: "#a7f070",
+    size_2x: "#c77dff"
 };
 
 // 화면 아래 물약 바에 표시되는 순서
@@ -164,6 +302,9 @@ const player = {
     velocityY: 0,
     grounded: false
 };
+
+// 캐릭터가 바라보는 방향 (1: 오른쪽, -1: 왼쪽)
+let facing = 1;
 
 // ========================================
 // 점수, 카메라, 난이도
@@ -359,6 +500,56 @@ function removeOldPlatforms() {
     }
 }
 
+// ========================================
+// 먼지 효과 (점프, 착지)
+// ========================================
+
+const particles = [];
+
+function spawnDust(x, y, count, spread) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x + (Math.random() - 0.5) * spread,
+            y: y,
+            vx: (Math.random() - 0.5) * 2.4,
+            vy: -Math.random() * 1.6,
+            life: 0,
+            max: 18 + Math.random() * 10,
+            size: PX * (1 + Math.floor(Math.random() * 2))
+        });
+    }
+}
+
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.05;
+        p.life += 1;
+
+        if (p.life >= p.max) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+function drawParticles() {
+    ctx.fillStyle = PAL.white;
+
+    for (const p of particles) {
+        ctx.globalAlpha = 1 - p.life / p.max;
+        ctx.fillRect(
+            snap(p.x),
+            snap(p.y - cameraY),
+            p.size,
+            p.size
+        );
+    }
+
+    ctx.globalAlpha = 1;
+}
 
 // ========================================
 // 점프
@@ -387,6 +578,16 @@ function jump(targetX, targetY) {
     if (player.velocityY < 0 && jumpMultiplier > 1) {
         player.velocityY *= Math.sqrt(jumpMultiplier);
     }
+
+    if (player.velocityX > 0.5) facing = 1;
+    if (player.velocityX < -0.5) facing = -1;
+
+    spawnDust(
+        player.x + player.width / 2,
+        player.y + player.height,
+        6,
+        player.width
+    );
 
     player.grounded = false;
 }
@@ -519,6 +720,13 @@ function reviveAtSafePlatform() {
     gameOver = false;
     dragging = false;
 
+    spawnDust(
+        player.x + player.width / 2,
+        player.y + player.height,
+        10,
+        player.width * 2
+    );
+
     const gameOverElement = document.getElementById("gameOver");
 
     if (gameOverElement) {
@@ -533,13 +741,13 @@ function reviveAtSafePlatform() {
 // 물약 바 버튼 위치
 const potionButtons = (function() {
     const buttonWidth = 140;
-    const buttonHeight = 44;
+    const buttonHeight = 52;
     const gap = 10;
     const totalWidth =
         POTION_BAR_ORDER.length * buttonWidth +
         (POTION_BAR_ORDER.length - 1) * gap;
     const startX = (canvas.width - totalWidth) / 2;
-    const y = 648;
+    const y = 642;
 
     return POTION_BAR_ORDER.map(function(id, index) {
         return {
@@ -745,9 +953,22 @@ function updatePlayer() {
         player.velocityX = 0;
     }
 
+    const wasGrounded = player.grounded;
+    const fallSpeed = player.velocityY;
+
     checkPlatformCollision(previousY);
 
     if (gameOver) return;
+
+    // 공중에서 발판에 내려앉을 때 먼지 효과
+    if (!wasGrounded && player.grounded && fallSpeed > 5) {
+        spawnDust(
+            player.x + player.width / 2,
+            player.y + player.height,
+            5,
+            player.width
+        );
+    }
 
     // 착지 후 미끄러짐 감소
     if (player.grounded) {
@@ -798,45 +1019,263 @@ function updatePlayer() {
 }
 
 // ========================================
+// 하늘 (높이에 따라 낮 → 노을 → 저녁 → 밤)
+// ========================================
+
+const SKY_STAGES = [
+    { at: 0,    top: PAL.sky,  bottom: PAL.cyan },
+    { at: 900,  top: PAL.red,  bottom: PAL.yellow },
+    { at: 2000, top: PAL.navy, bottom: PAL.plum },
+    { at: 3200, top: PAL.ink,  bottom: PAL.navy }
+];
+
+// 카메라가 시작 위치에서 얼마나 올라왔는지 (대략 최고 높이와 같다)
+function getAltitude() {
+    return Math.max(0, 230 - cameraY);
+}
+
+function getSkyColors() {
+    const altitude = getAltitude();
+
+    let i = 0;
+
+    while (
+        i < SKY_STAGES.length - 1 &&
+        altitude >= SKY_STAGES[i + 1].at
+    ) {
+        i++;
+    }
+
+    const a = SKY_STAGES[i];
+    const b = SKY_STAGES[Math.min(i + 1, SKY_STAGES.length - 1)];
+    const f = a === b ? 0 : clamp01((altitude - a.at) / (b.at - a.at));
+
+    return {
+        top: mixRgb(hexToRgb(a.top), hexToRgb(b.top), f),
+        bottom: mixRgb(hexToRgb(a.bottom), hexToRgb(b.bottom), f),
+        night: clamp01((altitude - 1400) / 1600),
+        day: clamp01(1 - altitude / 900)
+    };
+}
+
+// 별 (위치는 고정, 반짝임만 변한다)
+const STARS = [];
+
+for (let i = 0; i < 70; i++) {
+    STARS.push({
+        x: snap(hash2(i, 1) * canvas.width),
+        y: snap(hash2(i, 2) * canvas.height),
+        big: hash2(i, 3) > 0.8
+    });
+}
+
+// ========================================
 // 배경
 // ========================================
 
-function drawBackground() {
-    ctx.fillStyle = "#bde0fe";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+function drawBackground(sky) {
+    // 부드러운 그라데이션 대신 띠 모양으로 나눠 픽셀 느낌을 낸다.
+    const bands = 14;
+    const bandHeight = Math.ceil(canvas.height / bands);
+
+    for (let i = 0; i < bands; i++) {
+        const t = i / (bands - 1);
+
+        ctx.fillStyle = rgbCss(mixRgb(sky.top, sky.bottom, t));
+        ctx.fillRect(0, i * bandHeight, canvas.width, bandHeight + 1);
+    }
+}
+
+function drawCelestial(sky) {
+    // 해 (낮에만)
+    if (sky.day > 0.05) {
+        ctx.globalAlpha = sky.day;
+        drawPixelCircle(110, 120 + getAltitude() * 0.05, 44, PAL.orange);
+        drawPixelCircle(110, 120 + getAltitude() * 0.05, 36, PAL.yellow);
+        ctx.globalAlpha = 1;
+    }
+
+    if (sky.night <= 0.02) return;
+
+    // 별
+    for (let i = 0; i < STARS.length; i++) {
+        const star = STARS[i];
+
+        // 가끔씩 꺼지면서 반짝이게 한다.
+        if (((frameCount >> 5) + i) % 5 === 0) continue;
+
+        const y = mod(star.y - cameraY * 0.05, canvas.height);
+
+        ctx.globalAlpha = sky.night;
+        ctx.fillStyle = PAL.white;
+
+        if (star.big) {
+            ctx.fillRect(star.x, snap(y) - PX, PX, PX * 3);
+            ctx.fillRect(star.x - PX, snap(y), PX * 3, PX);
+        } else {
+            ctx.fillRect(star.x, snap(y), PX, PX);
+        }
+    }
+
+    // 달
+    const moonX = 640;
+    const moonY = 140;
+
+    ctx.globalAlpha = sky.night;
+    drawPixelCircle(moonX, moonY, 60, PAL.gray);
+    drawPixelCircle(moonX - 4, moonY - 4, 56, PAL.white);
+
+    ctx.fillStyle = PAL.gray;
+    ctx.fillRect(snap(moonX - 24), snap(moonY - 20), PX * 3, PX * 3);
+    ctx.fillRect(snap(moonX + 16), snap(moonY + 8), PX * 4, PX * 4);
+    ctx.fillRect(snap(moonX - 8), snap(moonY + 28), PX * 2, PX * 2);
+
+    ctx.globalAlpha = 1;
 }
 
 // ========================================
 // 구름
 // ========================================
 
-function drawClouds() {
-    const clouds = [
-        { x: 100, y: 100 },
-        { x: 600, y: 250 },
-        { x: 350, y: 450 },
-        { x: 50, y: 700 }
-    ];
+// 구름 모양 (칸 단위: x, y, 너비, 높이)
+const CLOUD_SHAPE = [
+    [2, 0, 4, 1],
+    [1, 1, 6, 1],
+    [0, 2, 8, 1],
+    [0, 3, 8, 1]
+];
 
-    for (const cloud of clouds) {
-        const y = cloud.y - cameraY * 0.3;
+const CLOUDS = [
+    { x: 100, y: 100, speed: 0.12, unit: 12 },
+    { x: 600, y: 250, speed: 0.08, unit: 8 },
+    { x: 350, y: 450, speed: 0.10, unit: 12 },
+    { x: 50, y: 650, speed: 0.06, unit: 8 },
+    { x: 480, y: 20, speed: 0.07, unit: 8 },
+    { x: 220, y: 330, speed: 0.05, unit: 8 }
+];
 
-        if (y < -100 || y > canvas.height + 100) {
-            continue;
+function drawClouds(night) {
+    const bodyColor = rgbCss(
+        mixRgb(hexToRgb(PAL.white), hexToRgb(PAL.slate), night)
+    );
+
+    const shadeColor = rgbCss(
+        mixRgb(hexToRgb(PAL.gray), hexToRgb(PAL.dark), night)
+    );
+
+    const span = canvas.height + 200;
+
+    for (const cloud of CLOUDS) {
+        // 화면 밖으로 나가면 반대편에서 다시 나타난다.
+        const y = snap(
+            mod(cloud.y - cameraY * 0.3 + 100, span) - 100
+        );
+
+        const x = snap(
+            mod(
+                cloud.x + frameCount * cloud.speed + 100,
+                canvas.width + 200
+            ) - 100
+        );
+
+        for (const part of CLOUD_SHAPE) {
+            ctx.fillStyle = part[1] === 3 ? shadeColor : bodyColor;
+            ctx.fillRect(
+                x + part[0] * cloud.unit,
+                y + part[1] * cloud.unit,
+                part[2] * cloud.unit,
+                part[3] * cloud.unit
+            );
         }
-
-        ctx.fillStyle = "rgba(255,255,255,0.7)";
-        ctx.beginPath();
-        ctx.arc(cloud.x, y, 25, 0, Math.PI * 2);
-        ctx.arc(cloud.x + 30, y - 10, 30, 0, Math.PI * 2);
-        ctx.arc(cloud.x + 60, y, 25, 0, Math.PI * 2);
-        ctx.fill();
     }
 }
 
 // ========================================
 // 플랫폼 그리기
 // ========================================
+
+function getPlatformTheme(level) {
+    // 높이 올라갈수록 눈 덮인 바위 발판이 된다.
+    if (level >= 4) {
+        return {
+            g1: PAL.white, g2: PAL.cyan,
+            hi: "#c8d6df", d1: PAL.gray, d2: PAL.slate
+        };
+    }
+
+    if (level >= 2) {
+        return {
+            g1: PAL.green, g2: PAL.teal,
+            hi: "#8c5a40", d1: "#7a4b34", d2: "#5b3426"
+        };
+    }
+
+    return {
+        g1: PAL.lime, g2: PAL.green,
+        hi: "#a46c4a", d1: "#8b5a3c", d2: "#6b4230"
+    };
+}
+
+function drawPlatform(platform, screenY) {
+    const theme = getPlatformTheme(platform.level || 0);
+
+    const x = snap(platform.x);
+    const y = snap(screenY);
+    const w = Math.max(PX * 4, snap(platform.width));
+    const h = platform.height;
+    const cols = w / PX;
+
+    // 같은 발판은 항상 같은 무늬가 나오도록 위치로 시드를 만든다.
+    const seedX = Math.floor(platform.x);
+    const seedY = Math.floor(platform.y);
+
+    // 옆면과 아랫면 테두리
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(x - PX, y, w + PX * 2, h + PX);
+
+    // 흙(또는 바위)
+    ctx.fillStyle = theme.d1;
+    ctx.fillRect(x, y, w, h);
+
+    ctx.fillStyle = theme.d2;
+    ctx.fillRect(x, y + h - PX, w, PX);
+
+    // 흙 알갱이
+    for (let c = 0; c < cols; c++) {
+        for (let r = 2; r < 4; r++) {
+            const v = hash2(seedX + c * 7, seedY + r * 13);
+
+            if (v < 0.16) {
+                ctx.fillStyle = theme.d2;
+                ctx.fillRect(x + c * PX, y + r * PX, PX, PX);
+            } else if (v > 0.92) {
+                ctx.fillStyle = theme.hi;
+                ctx.fillRect(x + c * PX, y + r * PX, PX, PX);
+            }
+        }
+    }
+
+    // 풀(또는 눈) 두 줄
+    ctx.fillStyle = theme.g2;
+    ctx.fillRect(x, y, w, PX * 2);
+
+    ctx.fillStyle = theme.g1;
+    ctx.fillRect(x, y, w, PX);
+
+    for (let c = 0; c < cols; c++) {
+        // 아래로 삐죽 내려온 풀
+        if (hash2(seedX + c * 3, seedY + 99) < 0.35) {
+            ctx.fillStyle = theme.g2;
+            ctx.fillRect(x + c * PX, y + PX * 2, PX, PX);
+        }
+
+        // 위로 솟은 풀잎
+        if (hash2(seedX + c * 5, seedY + 17) < 0.22) {
+            ctx.fillStyle = theme.g1;
+            ctx.fillRect(x + c * PX, y - PX, PX, PX);
+        }
+    }
+}
 
 function drawPlatforms() {
     for (const platform of platforms) {
@@ -849,30 +1288,7 @@ function drawPlatforms() {
             continue;
         }
 
-        const level = platform.level || 0;
-
-        if (level >= 4) {
-            ctx.fillStyle = "#388e3c";
-        } else if (level >= 2) {
-            ctx.fillStyle = "#43a047";
-        } else {
-            ctx.fillStyle = "#4caf50";
-        }
-
-        ctx.fillRect(
-            platform.x,
-            screenY,
-            platform.width,
-            platform.height
-        );
-
-        ctx.fillStyle = "#81c784";
-        ctx.fillRect(
-            platform.x,
-            screenY,
-            platform.width,
-            5
-        );
+        drawPlatform(platform, screenY);
     }
 }
 
@@ -884,157 +1300,252 @@ function drawFloor() {
     const screenY = floorY - cameraY;
 
     if (
-        screenY < canvas.height &&
-        screenY + floorHeight > 0
+        screenY >= canvas.height ||
+        screenY + floorHeight <= 0
     ) {
-        ctx.fillStyle = "#795548";
-        ctx.fillRect(
-            0,
-            screenY,
-            canvas.width,
-            floorHeight
-        );
-
-        ctx.fillStyle = "#4caf50";
-        ctx.fillRect(
-            0,
-            screenY,
-            canvas.width,
-            10
-        );
+        return;
     }
+
+    const y = snap(screenY);
+    const bottom = canvas.height;
+
+    // 윗면 테두리
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(0, y - PX, canvas.width, PX);
+
+    // 흙
+    ctx.fillStyle = "#6b4230";
+    ctx.fillRect(0, y, canvas.width, bottom - y);
+
+    // 벽돌 줄무늬
+    ctx.fillStyle = "#4f3224";
+
+    for (let row = 0; y + 8 + row * 16 < bottom; row++) {
+        const ry = y + 8 + row * 16;
+
+        ctx.fillRect(0, ry, canvas.width, PX);
+
+        for (let bx = (row % 2) * 16; bx < canvas.width; bx += 32) {
+            ctx.fillRect(bx, ry + PX, PX, 12);
+        }
+    }
+
+    // 풀
+    ctx.fillStyle = PAL.green;
+    ctx.fillRect(0, y, canvas.width, PX * 2);
+
+    ctx.fillStyle = PAL.lime;
+    ctx.fillRect(0, y, canvas.width, PX);
 }
 
 // ========================================
 // 스킨별 플레이어 그리기
 // ========================================
 
-function drawPlayer() {
-    const screenY = player.y - cameraY;
+// 캐릭터 도트 (6칸 x 8칸)
+// L: 새싹 잎  B: 몸  D: 그림자  W: 눈 흰자  K: 눈동자  F: 발
+const PLAYER_SPRITE = [
+    "...LL.",
+    "..LL..",
+    ".BBBB.",
+    "BBBBBD",
+    "BWBBWD",
+    "BKBBKD",
+    "BBDDBD",
+    "FF..FF"
+];
 
-    // 크기 물약으로 커진 비율
-    const s = player.width / BASE_PLAYER_WIDTH;
+const RAINBOW_COLORS = [
+    PAL.red, PAL.orange, PAL.yellow, PAL.lime,
+    PAL.cyan, PAL.blue, "#c77dff"
+];
 
-    let bodyColor = "#2e7d32";
-    let footColor = "#1b5e20";
+function getSkinPalette() {
+    const base = { W: PAL.white, K: PAL.ink };
 
     switch (currentSkin) {
         case "leaf":
-            bodyColor = "#66bb6a";
-            footColor = "#2e7d32";
+            base.B = PAL.lime;
+            base.D = PAL.green;
+            base.F = PAL.teal;
+            base.L = PAL.green;
             break;
 
         case "ocean":
-            bodyColor = "#29b6f6";
-            footColor = "#0277bd";
+            base.B = PAL.sky;
+            base.D = PAL.blue;
+            base.F = PAL.navy;
+            base.L = PAL.cyan;
             break;
 
         case "rainbow":
-            bodyColor = "#ab47bc";
-            footColor = "#7b1fa2";
+            base.B = RAINBOW_COLORS[
+                Math.floor(frameCount / 8) % RAINBOW_COLORS.length
+            ];
+            base.D = PAL.plum;
+            base.F = PAL.ink;
+            base.L = PAL.lime;
             break;
 
         case "basic":
         default:
-            bodyColor = "#2e7d32";
-            footColor = "#1b5e20";
+            base.B = PAL.green;
+            base.D = PAL.teal;
+            base.F = PAL.ink;
+            base.L = PAL.lime;
             break;
     }
 
-    // 몸통
-    ctx.fillStyle = bodyColor;
-    ctx.fillRect(
-        player.x,
-        screenY,
-        player.width,
-        player.height
-    );
+    return base;
+}
 
-    // 눈
-    ctx.fillStyle = "white";
-    ctx.fillRect(
-        player.x + 7 * s,
-        screenY + 9 * s,
-        5 * s,
-        5 * s
-    );
-    ctx.fillRect(
-        player.x + 18 * s,
-        screenY + 9 * s,
-        5 * s,
-        5 * s
-    );
+function drawPlayer() {
+    const screenY = player.y - cameraY;
 
-    // 발
-    ctx.fillStyle = footColor;
-    ctx.fillRect(
-        player.x + 2 * s,
-        screenY + 35 * s,
-        10 * s,
-        5 * s
-    );
-    ctx.fillRect(
-        player.x + 18 * s,
-        screenY + 35 * s,
-        10 * s,
-        5 * s
+    let drawW = player.width;
+    let drawH = player.height;
+
+    if (dragging && player.grounded && !gameOver) {
+        // 점프 준비 중에는 납작하게 웅크린다.
+        drawH *= 0.85;
+        drawW *= 1.08;
+    } else if (!player.grounded && player.velocityY < -8) {
+        // 빠르게 올라갈 때는 길쭉하게 늘어난다.
+        drawH *= 1.08;
+        drawW *= 0.94;
+    }
+
+    const ox = Math.round(player.x + (player.width - drawW) / 2);
+    const oy = Math.round(screenY + (player.height - drawH));
+
+    drawSprite(
+        PLAYER_SPRITE,
+        getSkinPalette(),
+        ox,
+        oy,
+        drawW,
+        drawH,
+        facing < 0
     );
 }
 
 // ========================================
-// 점프 조준선
+// 점프 조준선 (도트 점선)
 // ========================================
 
 function drawAim() {
     if (!dragging || gameOver) return;
 
-    ctx.strokeStyle = "rgba(46,125,50,0.6)";
-    ctx.lineWidth = 3;
+    const dx = mouseX - mouseStartX;
+    const dy = mouseY - mouseStartY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
 
-    ctx.beginPath();
-    ctx.moveTo(
-        player.x + player.width / 2,
-        player.y - cameraY + player.height / 2
+    if (distance < 10) return;
+
+    const power = Math.min(
+        distance / distancePower,
+        maxJumpPower
     );
-    ctx.lineTo(mouseX, mouseY);
-    ctx.stroke();
 
-    ctx.fillStyle = "#2e7d32";
-    ctx.beginPath();
-    ctx.arc(mouseX, mouseY, 8, 0, Math.PI * 2);
-    ctx.fill();
+    const ratio = power / maxJumpPower;
+
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+
+    const fromX = player.x + player.width / 2;
+    const fromY = player.y - cameraY + player.height / 2;
+
+    // 세게 끌수록 점선이 길어지고 색이 변한다.
+    const length = 48 + ratio * 150;
+    const count = Math.floor(length / 20);
+
+    let color = PAL.lime;
+
+    if (ratio >= 0.8) {
+        color = PAL.orange;
+    } else if (ratio >= 0.4) {
+        color = PAL.yellow;
+    }
+
+    for (let i = 1; i <= count; i++) {
+        const t = i * 20;
+        const size = i === count ? PX * 3 : PX * 2;
+
+        const px = snap(fromX + dirX * t - size / 2);
+        const py = snap(fromY + dirY * t - size / 2);
+
+        ctx.fillStyle = PAL.ink;
+        ctx.fillRect(px - 2, py - 2, size + 4, size + 4);
+
+        ctx.fillStyle = color;
+        ctx.fillRect(px, py, size, size);
+    }
 }
 
 // ========================================
 // 물약 바 그리기
 // ========================================
 
+// 물약 병 도트 (7칸 x 8칸)
+// C: 코르크  G: 유리  L: 물약  S: 반짝임
+const BOTTLE_SPRITE = [
+    "..CCC..",
+    "..GGG..",
+    "..GGG..",
+    ".GLLLG.",
+    "GLSLLLG",
+    "GLSLLLG",
+    "GLLLLLG",
+    ".GGGGG."
+];
+
 function drawPotionBar() {
     ctx.save();
-    ctx.textAlign = "center";
+    ctx.textAlign = "left";
 
     for (const button of potionButtons) {
         const usable = canUsePotion(button.id);
         const count = potionInventory[button.id] || 0;
 
-        ctx.fillStyle = usable
-            ? "rgba(46,125,50,0.92)"
-            : "rgba(60,60,60,0.55)";
-        ctx.fillRect(button.x, button.y, button.w, button.h);
-
-        ctx.fillStyle = "white";
-        ctx.font = "bold 14px sans-serif";
-        ctx.fillText(
-            POTION_LABELS[button.id],
-            button.x + button.w / 2,
-            button.y + 19
+        drawPixelBox(
+            button.x,
+            button.y,
+            button.w,
+            button.h,
+            usable ? PAL.green : PAL.dark,
+            usable ? PAL.lime : PAL.slate
         );
 
-        ctx.font = "12px sans-serif";
+        // 물약 병 (보유 수량이 없으면 회색)
+        drawSprite(
+            BOTTLE_SPRITE,
+            {
+                C: "#7a4b34",
+                G: "#c8d6df",
+                S: PAL.white,
+                L: count > 0 ? POTION_COLORS[button.id] : PAL.slate
+            },
+            button.x + 14,
+            button.y + 14,
+            21,
+            24,
+            false
+        );
+
+        setFont(14, true);
+        ctx.fillStyle = usable ? PAL.white : PAL.gray;
+        ctx.fillText(
+            POTION_LABELS[button.id],
+            button.x + 44,
+            button.y + 25
+        );
+
+        setFont(14, false);
+        ctx.fillStyle = count > 0 ? PAL.yellow : PAL.slate;
         ctx.fillText(
             "보유 " + count,
-            button.x + button.w / 2,
-            button.y + 36
+            button.x + 44,
+            button.y + 42
         );
     }
 
@@ -1051,48 +1562,58 @@ function drawReviveOverlay() {
     ctx.save();
     ctx.textAlign = "center";
 
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillStyle = "rgba(26,28,44,0.78)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = "white";
-    ctx.font = "bold 44px sans-serif";
+    drawPixelBox(150, 210, 500, 250, PAL.ink, PAL.white);
+
+    setFont(42, true);
+    ctx.fillStyle = PAL.red;
+    ctx.fillText("GAME OVER", canvas.width / 2 + 3, 283);
+    ctx.fillStyle = PAL.orange;
     ctx.fillText("GAME OVER", canvas.width / 2, 280);
 
-    ctx.font = "20px sans-serif";
+    setFont(28, false);
+    ctx.fillStyle = PAL.white;
+    ctx.fillText("부활 물약을 사용할까요?", canvas.width / 2, 336);
+
+    setFont(14, false);
+    ctx.fillStyle = PAL.yellow;
     ctx.fillText(
-        "❤️ 부활 물약 " + (potionInventory.revive || 0) +
-        "개 보유 · 사용하시겠어요?",
+        "보유 부활 물약: " + (potionInventory.revive || 0) + "개",
         canvas.width / 2,
-        335
+        362
     );
 
-    ctx.fillStyle = "#e53935";
-    ctx.fillRect(
+    drawPixelBox(
         reviveButtonRect.x,
         reviveButtonRect.y,
         reviveButtonRect.w,
-        reviveButtonRect.h
+        reviveButtonRect.h,
+        PAL.red,
+        PAL.orange
     );
 
-    ctx.fillStyle = "#616161";
-    ctx.fillRect(
+    drawPixelBox(
         giveUpButtonRect.x,
         giveUpButtonRect.y,
         giveUpButtonRect.w,
-        giveUpButtonRect.h
+        giveUpButtonRect.h,
+        PAL.dark,
+        PAL.slate
     );
 
-    ctx.fillStyle = "white";
-    ctx.font = "bold 20px sans-serif";
+    setFont(28, true);
+    ctx.fillStyle = PAL.white;
     ctx.fillText(
-        "부활 물약 사용",
+        "부활하기",
         reviveButtonRect.x + reviveButtonRect.w / 2,
-        reviveButtonRect.y + 35
+        reviveButtonRect.y + 38
     );
     ctx.fillText(
-        "게임 종료",
+        "포기하기",
         giveUpButtonRect.x + giveUpButtonRect.w / 2,
-        giveUpButtonRect.y + 35
+        giveUpButtonRect.y + 38
     );
 
     ctx.restore();
@@ -1161,6 +1682,9 @@ function restartGame() {
     player.velocityY = 0;
     player.grounded = false;
 
+    facing = 1;
+    particles.length = 0;
+
     cameraY = 0;
     maxHeight = 0;
     score = 0;
@@ -1202,12 +1726,19 @@ function restartGame() {
 // ========================================
 
 function gameLoop() {
-    updatePlayer();
+    frameCount += 1;
 
-    drawBackground();
-    drawClouds();
+    updatePlayer();
+    updateParticles();
+
+    const sky = getSkyColors();
+
+    drawBackground(sky);
+    drawCelestial(sky);
+    drawClouds(sky.night);
     drawPlatforms();
     drawFloor();
+    drawParticles();
     drawPlayer();
     drawAim();
     drawPotionBar();
